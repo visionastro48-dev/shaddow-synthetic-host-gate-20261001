@@ -19,7 +19,7 @@ jobs:
           cd fixture
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           sudo apt-get update -qq
-          sudo apt-get install -y -qq uidmap libseccomp-dev gcc
+          sudo apt-get install -y -qq uidmap libseccomp-dev gcc strace
           sudo useradd --uid 45000 --user-group --no-create-home --shell /usr/sbin/nologin shaddowprobe
           sudo usermod --add-subuids 50000-59999 --add-subgids 50000-59999 shaddowprobe
           command -v newuidmap
