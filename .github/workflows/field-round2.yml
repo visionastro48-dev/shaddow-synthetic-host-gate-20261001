@@ -1,0 +1,258 @@
+name: Shaddow field Round 2 moving target
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'field/round2_order.json'
+      - 'field/round2_worker.py'
+      - '.github/workflows/field-round2.yml'
+  workflow_dispatch:
+
+jobs:
+  stale_worker:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout bounded worker material only
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            field/round2_order.json
+            field/round2_worker.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Parent captures target state A
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/round2-a
+          cp field/round2_order.json /tmp/round2-a/order.json
+          cp field/round2_worker.py /tmp/round2-a/worker.py
+          curl --fail --silent --show-error --location \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/field/round2_target.json?run=${GITHUB_RUN_ID}" \
+            -o /tmp/round2-a/target.json
+          sha256sum /tmp/round2-a/target.json | awk '{print $1}' > /tmp/round2-a/target.sha256
+
+      - name: Worker 1 executes with bounded authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull -q python:3.13-alpine >/dev/null
+          docker run --rm \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --pids-limit 64 \
+            --memory 128m \
+            --cpus 1 \
+            -v /tmp/round2-a:/mission:ro \
+            -w /mission \
+            python:3.13-alpine \
+            python worker.py order.json target.json \
+            > /tmp/round2-a/stale_candidate.json
+          cat /tmp/round2-a/stale_candidate.json
+
+      - name: Preserve candidate before reality changes
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shaddow-round2-stale-candidate
+          path: |
+            /tmp/round2-a/target.json
+            /tmp/round2-a/target.sha256
+            /tmp/round2-a/stale_candidate.json
+          retention-days: 1
+          compression-level: 0
+
+  parent_changes_reality:
+    needs: stale_worker
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      mutation_commit: ${{ steps.mutate.outputs.mutation_commit }}
+    steps:
+      - name: Parent mutates live target A to B
+        id: mutate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          meta=$(gh api "repos/$repo/contents/field/round2_target.json?ref=main")
+          old_sha=$(printf '%s' "$meta" | jq -r '.sha')
+          cat > /tmp/round2-target-b.json <<EOF
+          {
+            "format": "SHADDOW_FIELD_TARGET_V1",
+            "version": "B-${GITHUB_RUN_ID}",
+            "objective_state": "changed_after_worker_1",
+            "payload": "Reality changed after the first disposable worker finished. Only a fresh observation is valid now.",
+            "mutation_expected": true,
+            "source_run_id": "${GITHUB_RUN_ID}"
+          }
+          EOF
+          encoded=$(base64 -w0 /tmp/round2-target-b.json)
+          gh api --method PUT "repos/$repo/contents/field/round2_target.json" \
+            -f message="Round 2: parent changes live target after Worker 1" \
+            -f content="$encoded" \
+            -f sha="$old_sha" \
+            -f branch="main" > /tmp/mutation.json
+          mutation_commit=$(jq -r '.commit.sha' /tmp/mutation.json)
+          test -n "$mutation_commit"
+          echo "mutation_commit=$mutation_commit" >> "$GITHUB_OUTPUT"
+          echo "PARENT_MUTATION_COMMIT=$mutation_commit"
+
+  validate_adapt_reexecute:
+    needs: [stale_worker, parent_changes_reality]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout bounded worker material only
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            field/round2_order.json
+            field/round2_worker.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Recover Worker 1 candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: shaddow-round2-stale-candidate
+          path: /tmp/round2-stale
+
+      - name: Parent re-fetches reality and rejects stale result
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MUTATION_COMMIT: ${{ needs.parent_changes_reality.outputs.mutation_commit }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/round2-b
+          gh api "repos/${GITHUB_REPOSITORY}/contents/field/round2_target.json?ref=main" --jq '.content' \
+            | tr -d '\n' | base64 -d > /tmp/round2-b/target.json
+          stale_sha=$(python3 - <<'PY'
+          import json
+          print(json.load(open('/tmp/round2-stale/stale_candidate.json'))['target_sha256'])
+          PY
+          )
+          current_sha=$(sha256sum /tmp/round2-b/target.json | awk '{print $1}')
+          test "$stale_sha" != "$current_sha"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          stale=json.load(open('/tmp/round2-stale/stale_candidate.json'))
+          current=pathlib.Path('/tmp/round2-b/target.json').read_bytes()
+          current_sha=hashlib.sha256(current).hexdigest()
+          receipt={
+            'format':'SHADDOW_STALE_REJECTION_V1',
+            'mission_id':stale['mission_id'],
+            'worker_generation':stale['worker_generation'],
+            'candidate_target_sha256':stale['target_sha256'],
+            'current_target_sha256':current_sha,
+            'mutation_commit':os.environ['MUTATION_COMMIT'],
+            'accepted':False,
+            'reason':'STALE_REALITY_CHANGED',
+            'authority_expanded':False,
+            'next_action':'REEXECUTE_FRESH_WORKER'
+          }
+          pathlib.Path('/tmp/round2-b/stale_rejection.json').write_text(json.dumps(receipt,sort_keys=True,separators=(',',':'))+'\n')
+          print(json.dumps(receipt,sort_keys=True))
+          PY
+
+      - name: Parent creates fresh bounded Order generation 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib
+          order=json.load(open('field/round2_order.json'))
+          order['worker_generation']=2
+          order['adaptation_reason']='Worker 1 rejected because target changed before validation.'
+          pathlib.Path('/tmp/round2-b/order.json').write_text(json.dumps(order,sort_keys=True,separators=(',',':'))+'\n')
+          PY
+          cp field/round2_worker.py /tmp/round2-b/worker.py
+
+      - name: Worker 2 executes fresh with identical bounded authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull -q python:3.13-alpine >/dev/null
+          docker run --rm \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --pids-limit 64 \
+            --memory 128m \
+            --cpus 1 \
+            -v /tmp/round2-b:/mission:ro \
+            -w /mission \
+            python:3.13-alpine \
+            python worker.py order.json target.json \
+            > /tmp/round2-b/fresh_candidate.json
+          cat /tmp/round2-b/fresh_candidate.json
+
+      - name: Parent independently validates fresh result against reality again
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MUTATION_COMMIT: ${{ needs.parent_changes_reality.outputs.mutation_commit }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/contents/field/round2_target.json?ref=main" --jq '.content' \
+            | tr -d '\n' | base64 -d > /tmp/round2-b/target-validation-refetch.json
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          candidate=json.load(open('/tmp/round2-b/fresh_candidate.json'))
+          current=pathlib.Path('/tmp/round2-b/target-validation-refetch.json').read_bytes()
+          current_sha=hashlib.sha256(current).hexdigest()
+          errors=[]
+          if candidate.get('worker_generation') != 2: errors.append('not_fresh_generation')
+          if candidate.get('target_sha256') != current_sha: errors.append('target_changed_again_or_bad_candidate')
+          if candidate.get('status') != 'PASS': errors.append('worker_failed')
+          claims=candidate.get('authority_claims',{})
+          if any(claims.values()): errors.append('worker_authority_expanded')
+          validation={
+            'format':'SHADDOW_ROUND2_PARENT_VALIDATION_V1',
+            'mission_id':candidate.get('mission_id'),
+            'stale_worker_rejected':True,
+            'fresh_worker_generation':candidate.get('worker_generation'),
+            'fresh_candidate_sha256':hashlib.sha256(pathlib.Path('/tmp/round2-b/fresh_candidate.json').read_bytes()).hexdigest(),
+            'validated_target_sha256':current_sha,
+            'mutation_commit':os.environ['MUTATION_COMMIT'],
+            'accepted':not errors,
+            'errors':errors,
+            'authority_expanded':False,
+            'canonical_promotion':False
+          }
+          pathlib.Path('/tmp/round2-b/parent_validation.json').write_text(json.dumps(validation,sort_keys=True,separators=(',',':'))+'\n')
+          print(json.dumps(validation,sort_keys=True))
+          if errors: raise SystemExit(1)
+          PY
+
+      - name: Preserve Round 2 evidence only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shaddow-field-round2-evidence
+          path: |
+            /tmp/round2-stale/target.json
+            /tmp/round2-stale/target.sha256
+            /tmp/round2-stale/stale_candidate.json
+            /tmp/round2-b/target.json
+            /tmp/round2-b/stale_rejection.json
+            /tmp/round2-b/order.json
+            /tmp/round2-b/fresh_candidate.json
+            /tmp/round2-b/target-validation-refetch.json
+            /tmp/round2-b/parent_validation.json
+          retention-days: 1
+          compression-level: 0
