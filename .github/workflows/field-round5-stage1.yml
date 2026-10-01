@@ -1,0 +1,114 @@
+name: Shaddow field Round 5 Stage 1 suspend
+
+on:
+  push:
+    paths:
+      - '.github/workflows/field-round5-stage1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  suspend:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout only bounded Round 5 Stage 1 material
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            field/round5_order.json
+            field/round5_witness_left.json
+            field/round5_witness_right_email.json
+            field/round5_stage1_worker.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Parent freezes Stage 1 inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/shaddow-r5s1
+          mkdir -p /tmp/shaddow-r5s1
+          cp field/round5_* /tmp/shaddow-r5s1/
+          cd /tmp/shaddow-r5s1
+          sha256sum round5_order.json round5_witness_left.json round5_witness_right_email.json > input-sha256s.txt
+          cat input-sha256s.txt
+
+      - name: Disposable worker must suspend and block both actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull -q python:3.13-alpine >/dev/null
+          docker run --rm \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --pids-limit 64 \
+            --memory 128m \
+            --cpus 1 \
+            -v /tmp/shaddow-r5s1:/mission:ro \
+            -w /mission \
+            python:3.13-alpine \
+            python round5_stage1_worker.py \
+            > /tmp/shaddow-r5s1/suspended-checkpoint.json
+          cat /tmp/shaddow-r5s1/suspended-checkpoint.json
+
+      - name: Parent independently validates suspension
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,pathlib,time
+          r=pathlib.Path('/tmp/shaddow-r5s1')
+          order=json.loads((r/'round5_order.json').read_text())
+          left=json.loads((r/'round5_witness_left.json').read_text())
+          right=json.loads((r/'round5_witness_right_email.json').read_text())['claim']
+          cp=json.loads((r/'suspended-checkpoint.json').read_text())
+          home=order['home_state_sha256']
+          def valid(w):
+              return w.get('prior_state_sha256')==home and w.get('transition_sha256')==hashlib.sha256((home+'|'+w.get('state_value','')).encode()).hexdigest()
+          errors=[]
+          if not valid(left): errors.append('left_invalid')
+          if not valid(right): errors.append('right_invalid')
+          if left['transition_sha256']==right['transition_sha256']: errors.append('not_a_fork')
+          if left['requested_external_action']==right['requested_external_action']: errors.append('actions_not_conflicting')
+          if cp.get('status')!='SUSPENDED': errors.append('did_not_suspend')
+          if cp.get('authorized_action') is not None: errors.append('action_authorized_too_early')
+          if cp.get('external_action')!='BLOCK_ALL_EXTERNAL_ACTIONS': errors.append('actions_not_blocked')
+          if cp.get('next_action')!='WAIT_FOR_ADMISSIBLE_RESOLVER': errors.append('wrong_next_action')
+          if cp.get('authority_expanded') is not False: errors.append('authority_expanded')
+          val={
+            'format':'SHADDOW_ROUND5_STAGE1_PARENT_VALIDATION_V1',
+            'mission_id':order['mission_id'],
+            'left_valid':valid(left),
+            'right_valid':valid(right),
+            'fork_conflict':True,
+            'authorized_action':cp.get('authorized_action'),
+            'external_action':cp.get('external_action'),
+            'accepted':not errors,
+            'errors':errors,
+            'authority_expanded':False,
+            'canonical_promotion':False,
+            'checkpoint_sha256':hashlib.sha256((r/'suspended-checkpoint.json').read_bytes()).hexdigest(),
+            'validated_at_unix':int(time.time())
+          }
+          (r/'parent-stage1-validation.json').write_text(json.dumps(val,sort_keys=True,separators=(',',':'))+'\n')
+          print(json.dumps(val,sort_keys=True))
+          if errors: raise SystemExit(1)
+          PY
+
+      - name: Preserve suspended mission evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shaddow-field-round5-stage1-suspended
+          path: |
+            /tmp/shaddow-r5s1/input-sha256s.txt
+            /tmp/shaddow-r5s1/round5_order.json
+            /tmp/shaddow-r5s1/round5_witness_left.json
+            /tmp/shaddow-r5s1/round5_witness_right_email.json
+            /tmp/shaddow-r5s1/suspended-checkpoint.json
+            /tmp/shaddow-r5s1/parent-stage1-validation.json
+          retention-days: 1
+          compression-level: 0
