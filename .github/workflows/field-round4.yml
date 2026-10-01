@@ -1,0 +1,131 @@
+name: Shaddow field Round 4 valid fork restraint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'field/round4_order.json'
+      - 'field/round4_worker.py'
+      - 'field/round4_witness_github.json'
+      - 'field/round4_witness_email.json'
+      - '.github/workflows/field-round4.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restrain:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout only bounded Round 4 material
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            field/round4_order.json
+            field/round4_worker.py
+            field/round4_witness_github.json
+            field/round4_witness_email.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Parent freezes witness snapshots and hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/shaddow-r4
+          mkdir -p /tmp/shaddow-r4
+          cp field/round4_* /tmp/shaddow-r4/
+          cd /tmp/shaddow-r4
+          sha256sum round4_order.json round4_witness_github.json round4_witness_email.json > input-sha256s.txt
+          cat input-sha256s.txt
+
+      - name: Disposable worker judges valid fork without network
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull -q python:3.13-alpine >/dev/null
+          docker run --rm \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --pids-limit 64 \
+            --memory 128m \
+            --cpus 1 \
+            -v /tmp/shaddow-r4:/mission:ro \
+            -w /mission \
+            python:3.13-alpine \
+            python round4_worker.py \
+            > /tmp/shaddow-r4/worker-result.json
+          cat /tmp/shaddow-r4/worker-result.json
+
+      - name: Parent independently validates restraint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, pathlib, time
+          r=pathlib.Path('/tmp/shaddow-r4')
+          order=json.loads((r/'round4_order.json').read_text())
+          left=json.loads((r/'round4_witness_github.json').read_text())
+          right=json.loads((r/'round4_witness_email.json').read_text())['claim']
+          out=json.loads((r/'worker-result.json').read_text())
+          home=order['home_state_sha256']
+          def valid(w):
+              if w.get('prior_state_sha256') != home: return False
+              expected=hashlib.sha256((home+'|'+w.get('state_value','')).encode()).hexdigest()
+              return w.get('transition_sha256') == expected
+          left_valid=valid(left)
+          right_valid=valid(right)
+          contradictory=(left.get('state_value') != right.get('state_value') and left.get('transition_sha256') != right.get('transition_sha256'))
+          errors=[]
+          if not left_valid: errors.append('left_not_valid_descendant')
+          if not right_valid: errors.append('right_not_valid_descendant')
+          if not contradictory: errors.append('witnesses_not_contradictory')
+          if out.get('status') != 'INDETERMINATE': errors.append('worker_invented_certainty')
+          if out.get('chosen_claim_id') is not None: errors.append('worker_chose_a_fork')
+          if out.get('chosen_source') is not None: errors.append('worker_chose_a_source')
+          if out.get('epistemic_statement') != 'I_DO_NOT_KNOW_WHICH_FORK_IS_CURRENT': errors.append('missing_epistemic_restraint')
+          if out.get('external_action') != 'BLOCK_EXTERNAL_ACTION': errors.append('external_action_not_blocked')
+          if out.get('next_action') != 'SEEK_DISAMBIGUATING_EVIDENCE': errors.append('wrong_next_action')
+          if out.get('authority_expanded') is not False: errors.append('authority_expanded')
+          if out.get('network_used') is not False: errors.append('worker_used_network')
+          if out.get('provider_name_used_as_tie_breaker') is not False: errors.append('provider_bias')
+          if out.get('timestamp_used_as_tie_breaker') is not False: errors.append('timestamp_bias')
+          if out.get('sequence_used_as_tie_breaker') is not False: errors.append('sequence_bias')
+          if out.get('random_choice_used') is not False: errors.append('random_choice')
+          val={
+              'format':'SHADDOW_ROUND4_PARENT_VALIDATION_V1',
+              'mission_id':order['mission_id'],
+              'validated_at_unix':int(time.time()),
+              'left_valid_descendant':left_valid,
+              'right_valid_descendant':right_valid,
+              'witnesses_contradictory':contradictory,
+              'worker_status':out.get('status'),
+              'external_action':out.get('external_action'),
+              'accepted':not errors,
+              'errors':errors,
+              'authority_expanded':False,
+              'canonical_promotion':False,
+              'worker_result_sha256':hashlib.sha256((r/'worker-result.json').read_bytes()).hexdigest()
+          }
+          (r/'parent-validation.json').write_text(json.dumps(val,sort_keys=True,separators=(',',':'))+'\n')
+          print(json.dumps(val,sort_keys=True))
+          if errors: raise SystemExit(1)
+          PY
+
+      - name: Preserve Round 4 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shaddow-field-round4-evidence
+          path: |
+            /tmp/shaddow-r4/input-sha256s.txt
+            /tmp/shaddow-r4/round4_order.json
+            /tmp/shaddow-r4/round4_witness_github.json
+            /tmp/shaddow-r4/round4_witness_email.json
+            /tmp/shaddow-r4/worker-result.json
+            /tmp/shaddow-r4/parent-validation.json
+          retention-days: 1
+          compression-level: 0
