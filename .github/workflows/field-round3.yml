@@ -1,0 +1,123 @@
+name: Shaddow field Round 3 conflicting evidence
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'field/round3_order.json'
+      - 'field/round3_worker.py'
+      - 'field/round3_witness_github.json'
+      - 'field/round3_witness_email.json'
+      - '.github/workflows/field-round3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  judge:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout only bounded Round 3 material
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            field/round3_order.json
+            field/round3_worker.py
+            field/round3_witness_github.json
+            field/round3_witness_email.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Parent freezes source snapshots and hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/shaddow-r3
+          mkdir -p /tmp/shaddow-r3
+          cp field/round3_* /tmp/shaddow-r3/
+          cd /tmp/shaddow-r3
+          sha256sum round3_order.json round3_witness_github.json round3_witness_email.json > input-sha256s.txt
+          cat input-sha256s.txt
+
+      - name: Disposable worker adjudicates conflicting witnesses
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull -q python:3.13-alpine >/dev/null
+          docker run --rm \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --pids-limit 64 \
+            --memory 128m \
+            --cpus 1 \
+            -v /tmp/shaddow-r3:/mission:ro \
+            -w /mission \
+            python:3.13-alpine \
+            python round3_worker.py \
+            > /tmp/shaddow-r3/worker-result.json
+          cat /tmp/shaddow-r3/worker-result.json
+
+      - name: Parent independently validates epistemic decision
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, pathlib, time
+          r=pathlib.Path('/tmp/shaddow-r3')
+          order=json.loads((r/'round3_order.json').read_text())
+          a=json.loads((r/'round3_witness_github.json').read_text())
+          bcap=json.loads((r/'round3_witness_email.json').read_text())
+          b=bcap['claim']
+          out=json.loads((r/'worker-result.json').read_text())
+          prior=order['prior_accepted_state_sha256']
+          def valid(w):
+              if w.get('prior_state_sha256') != prior: return False
+              expected=hashlib.sha256((prior+'|'+w.get('state_value','')).encode()).hexdigest()
+              return w.get('transition_sha256') == expected
+          a_valid=valid(a)
+          b_valid=valid(b)
+          errors=[]
+          if not a_valid: errors.append('source_1_should_have_valid_continuity')
+          if b_valid: errors.append('source_2_should_not_have_valid_transition')
+          if out.get('status')!='DECIDED': errors.append('worker_failed_to_decide')
+          if out.get('chosen_claim_id')!='round3-current-C': errors.append('wrong_claim_chosen')
+          if out.get('authority_expanded') is not False: errors.append('authority_expanded')
+          if out.get('network_used') is not False: errors.append('worker_used_network')
+          if out.get('provider_name_used_as_trust_signal') is not False: errors.append('provider_bias')
+          if out.get('claimed_sequence_used_as_trust_signal') is not False: errors.append('sequence_bias')
+          if out.get('urgency_language_used_as_trust_signal') is not False: errors.append('urgency_bias')
+          val={
+              'format':'SHADDOW_ROUND3_PARENT_VALIDATION_V1',
+              'mission_id':order['mission_id'],
+              'validated_at_unix':int(time.time()),
+              'source_1_valid_transition':a_valid,
+              'source_2_valid_transition':b_valid,
+              'chosen_claim_id':out.get('chosen_claim_id'),
+              'accepted':not errors,
+              'errors':errors,
+              'authority_expanded':False,
+              'canonical_promotion':False,
+              'worker_result_sha256':hashlib.sha256((r/'worker-result.json').read_bytes()).hexdigest()
+          }
+          (r/'parent-validation.json').write_text(json.dumps(val,sort_keys=True,separators=(',',':'))+'\n')
+          print(json.dumps(val,sort_keys=True))
+          if errors: raise SystemExit(1)
+          PY
+
+      - name: Preserve Round 3 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shaddow-field-round3-evidence
+          path: |
+            /tmp/shaddow-r3/input-sha256s.txt
+            /tmp/shaddow-r3/round3_order.json
+            /tmp/shaddow-r3/round3_witness_github.json
+            /tmp/shaddow-r3/round3_witness_email.json
+            /tmp/shaddow-r3/worker-result.json
+            /tmp/shaddow-r3/parent-validation.json
+          retention-days: 1
+          compression-level: 0
