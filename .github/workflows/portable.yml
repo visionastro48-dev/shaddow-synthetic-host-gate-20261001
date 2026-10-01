@@ -1,0 +1,72 @@
+name: Portable synthetic Linux isolation laboratory
+on:
+  push:
+    paths: ['.github/workflows/portable.yml', 'build_guest.py']
+  workflow_dispatch:
+permissions: {}
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Assemble synthetic portable Linux guest
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001.git fixture
+          cd fixture
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 linux-image-virtual busybox-static cpio uidmap strace libseccomp-dev
+          gcc -O2 -Wall -Wextra -static probe.c -o worker
+          gcc -O2 -Wall -Wextra launcher.c -lseccomp -o launcher
+          sudo python3 build_guest.py
+          timeout 240 sh -c 'printf "poweroff -f\n" | portable/run' > guest-synthetic.log 2>&1 || true
+          cat guest-synthetic.log
+          grep -q '^REAL_LINUX_SYNTHETIC_GATE_PASS' guest-synthetic.log
+          tar czf portable-linux.tar.gz portable
+          split -b 20M -d portable-linux.tar.gz portable-linux.part-
+          sha256sum portable-linux.tar.gz portable-linux.part-* > PORTABLE_SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: portable-part-00
+          path: fixture/portable-linux.part-00
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: portable-part-01
+          path: fixture/portable-linux.part-01
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: portable-part-02
+          path: fixture/portable-linux.part-02
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: portable-part-03
+          path: fixture/portable-linux.part-03
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: portable-part-04
+          path: fixture/portable-linux.part-04
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: portable-part-05
+          path: fixture/portable-linux.part-05
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: portable-proof
+          path: |
+            fixture/PORTABLE_SHA256SUMS
+            fixture/guest-synthetic.log
+          retention-days: 1
+          compression-level: 0
