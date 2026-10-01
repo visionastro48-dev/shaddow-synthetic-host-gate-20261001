@@ -1,0 +1,30 @@
+name: Synthetic Shaddow host gate
+on:
+  push:
+    paths: ['.github/workflows/gate.yml', 'gate.py', 'launcher.c', 'probe.c']
+  workflow_dispatch:
+permissions: {}
+jobs:
+  synthetic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Synthetic fixture only
+        env:
+          EXPECTED_REPOSITORY: visionastro48-dev/shaddow-synthetic-host-gate-20261001
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          git clone --depth 1 "https://github.com/$EXPECTED_REPOSITORY.git" fixture
+          cd fixture
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq uidmap libseccomp-dev gcc
+          sudo useradd --uid 45000 --user-group --no-create-home --shell /usr/sbin/nologin shaddowprobe
+          sudo usermod --add-subuids 50000-59999 --add-subgids 50000-59999 shaddowprobe
+          command -v newuidmap
+          command -v newgidmap
+          grep '^shaddowprobe:' /etc/subuid /etc/subgid
+          gcc -O2 -Wall -Wextra -static probe.c -o worker
+          gcc -O2 -Wall -Wextra launcher.c -lseccomp -o launcher
+          sudo env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin GITHUB_SHA="$GITHUB_SHA" GITHUB_RUN_ID="$GITHUB_RUN_ID" GITHUB_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT" python3 gate.py
