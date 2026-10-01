@@ -1,0 +1,118 @@
+name: Shaddow field Round 1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'field/round1_order.json'
+      - 'field/round1_worker.py'
+      - '.github/workflows/field-round1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  field:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout only bounded field files
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            field/round1_order.json
+            field/round1_worker.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Parent acquires fresh public snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://angels-relay-live-production.up.railway.app'
+          rm -rf /tmp/shaddow-field
+          mkdir -p /tmp/shaddow-field/snapshot
+          cp field/round1_order.json /tmp/shaddow-field/round1_order.json
+          cp field/round1_worker.py /tmp/shaddow-field/round1_worker.py
+          for f in styles.css app.js terms.html refund.html privacy.html; do
+            curl --fail --silent --show-error --location "$base/$f" -o "/tmp/shaddow-field/snapshot/$f"
+          done
+          python3 - <<'PY'
+          import hashlib, json, pathlib, time
+          root=pathlib.Path('/tmp/shaddow-field/snapshot')
+          files={}
+          for p in sorted(root.iterdir()):
+              data=p.read_bytes()
+              files[p.name]={'sha256':hashlib.sha256(data).hexdigest(),'size_bytes':len(data)}
+          out={'format':'SHADDOW_PARENT_INPUT_MANIFEST_V1','captured_at_unix':int(time.time()),'files':files}
+          pathlib.Path('/tmp/shaddow-field/input_manifest.json').write_text(json.dumps(out,sort_keys=True,separators=(',',':'))+'\n')
+          PY
+
+      - name: Run disposable worker with no network and no write authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull -q python:3.13-alpine >/dev/null
+          docker run --rm \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --pids-limit 64 \
+            --memory 128m \
+            --cpus 1 \
+            -v /tmp/shaddow-field:/mission:ro \
+            -w /mission \
+            python:3.13-alpine \
+            python round1_worker.py round1_order.json \
+            > /tmp/shaddow-field-result.json
+          cat /tmp/shaddow-field-result.json
+
+      - name: Parent independently validates candidate result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, pathlib, time
+          mission=pathlib.Path('/tmp/shaddow-field')
+          order=json.loads((mission/'round1_order.json').read_text())
+          candidate=json.loads(pathlib.Path('/tmp/shaddow-field-result.json').read_text())
+          errors=[]
+          if candidate.get('format')!='SHADDOW_FIELD_RESULT_V1': errors.append('bad_format')
+          if candidate.get('mission_id')!=order['mission_id']: errors.append('mission_id_mismatch')
+          if candidate.get('status')!='PASS': errors.append('worker_not_pass')
+          if sorted(candidate.get('files',{}))!=sorted(order['allowed_inputs']): errors.append('file_set_mismatch')
+          for name in order['allowed_inputs']:
+              data=(mission/'snapshot'/name).read_bytes()
+              expected_sha=hashlib.sha256(data).hexdigest()
+              expected_size=len(data)
+              got=candidate.get('files',{}).get(name,{})
+              if got.get('sha256')!=expected_sha: errors.append(f'{name}:sha')
+              if got.get('size_bytes')!=expected_size: errors.append(f'{name}:size')
+              if got.get('ok') is not True: errors.append(f'{name}:worker_check')
+          validation={
+              'format':'SHADDOW_PARENT_VALIDATION_V1',
+              'mission_id':order['mission_id'],
+              'validated_at_unix':int(time.time()),
+              'candidate_sha256':hashlib.sha256(pathlib.Path('/tmp/shaddow-field-result.json').read_bytes()).hexdigest(),
+              'accepted':not errors,
+              'errors':errors,
+              'external_effect_authority':'PARENT_ONLY',
+              'canonical_promotion':False
+          }
+          pathlib.Path('/tmp/shaddow-parent-validation.json').write_text(json.dumps(validation,sort_keys=True,separators=(',',':'))+'\n')
+          print(json.dumps(validation,sort_keys=True))
+          if errors: raise SystemExit(1)
+          PY
+
+      - name: Preserve field evidence only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shaddow-field-round1-evidence
+          path: |
+            /tmp/shaddow-field/input_manifest.json
+            /tmp/shaddow-field-result.json
+            /tmp/shaddow-parent-validation.json
+          retention-days: 1
+          compression-level: 0
