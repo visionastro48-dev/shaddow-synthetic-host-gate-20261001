@@ -1,0 +1,20 @@
+{
+  "format": "SHADDOW_EXTERNAL_RESOLVER_CAPTURE_V1",
+  "source_system": "Slack",
+  "source_workspace": "angels-sqw2321",
+  "source_channel_id": "C0C65SETS3T",
+  "source_channel_name": "shaddow",
+  "source_message_ts": "1790898023.405439",
+  "source_message_link": "https://angels-sqw2321.slack.com/archives/C0C65SETS3T/p1790898023405439",
+  "captured_statement": {
+    "format": "SHADDOW_FORK_RESOLVER_V1",
+    "mission_id": "shaddow-field-round5-resolve-and-act-20261002",
+    "checkpoint_sha256": "ae2c6ecfb5b9038a0ce48567d431ba842ea325ca90b2b23d46d69feca85dc404",
+    "winner_claim_id": "round5-left-branch",
+    "winner_transition_sha256": "70e4a402961165116d6c68c4284fddee77dba5210b1f405431120094a890e769",
+    "loser_claim_id": "round5-right-branch",
+    "authorized_action": "PUBLISH_FINAL_NIGHT_RECEIPT_ALPHA",
+    "resolver_rule": "sha256(checkpoint_sha256 + '|' + winner_claim_id + '|' + winner_transition_sha256 + '|' + authorized_action)",
+    "resolver_sha256": "b57618a8823c34d494cfe34a2aa9687834326d77eac284dc814e3d3fd2ce8d18"
+  }
+}
