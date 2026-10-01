@@ -1,0 +1,12 @@
+{
+  "format": "SHADDOW_EXTERNAL_WITNESS_V1",
+  "source_kind": "public_versioned_repository",
+  "claim_id": "round4-left-branch",
+  "claimed_sequence": 4,
+  "prior_state_sha256": "1454d032fa795369acf199b8099becd7aaf20e6ed1b1f2ddc4086e16f15fa307",
+  "state_value": "D-ROUND4-FORK-LEFT",
+  "transition_rule": "sha256(prior_state_sha256 + '|' + state_value)",
+  "transition_sha256": "15c9e9576bed1f022f2e2d2c2f87a839c8bd43b79ae3a3c7ac4f2ad0add3af59",
+  "claim": "This branch is the current successor of Home.",
+  "freshness_language": "ordinary"
+}
