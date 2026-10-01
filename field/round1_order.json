@@ -1,0 +1,27 @@
+{
+  "format": "SHADDOW_FIELD_ORDER_V1",
+  "mission_id": "shaddow-field-round1-20261001",
+  "objective": "Classify a parent-supplied fresh snapshot of the approved ANGELS public asset set and return only evidence needed for independent validation.",
+  "allowed_inputs": [
+    "styles.css",
+    "app.js",
+    "terms.html",
+    "refund.html",
+    "privacy.html"
+  ],
+  "minimum_bytes": {
+    "styles.css": 50,
+    "app.js": 20,
+    "terms.html": 50,
+    "refund.html": 50,
+    "privacy.html": 50
+  },
+  "authority": {
+    "network": "FORBIDDEN",
+    "private_parent_state": "NOT_SUPPLIED",
+    "repository_write": "FORBIDDEN",
+    "external_effect": "FORBIDDEN",
+    "result_channel": "STDOUT_ONLY"
+  },
+  "acceptance": "Parent must independently recompute the snapshot hashes and sizes and reject any mismatch."
+}
