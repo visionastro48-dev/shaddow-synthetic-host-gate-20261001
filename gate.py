@@ -89,7 +89,7 @@ for identity in (50000,54321,59999):
   try:os.kill(pid,9);os.waitpid(pid,0)
   except ProcessLookupError:pass
 assert before=={str(f):snapshot(f) for f in protected}
-report={'format':'SHADDOW_SYNTHETIC_HOST_GATE_V2','synthetic_only':True,'canonical_material_used':False,'all_checks_pass':True,'parent_euid':os.geteuid(),'source_sha256':{n:digest(pathlib.Path(n)) for n in ('probe.c','launcher.c','gate.py')},'worker_sha256':digest(pathlib.Path('worker')),'runs':runs,'protected_state_unchanged':True,'no_unauthorized_durable_authority':True,'provider':'GitHub standard hosted VM ubuntu-24.04','execution':{k:os.environ[k] for k in ('GITHUB_SHA','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT') if k in os.environ}}
+report={'format':'SHADDOW_SYNTHETIC_HOST_GATE_V2','synthetic_only':True,'canonical_material_used':False,'all_checks_pass':True,'parent_euid':os.geteuid(),'source_sha256':{n:digest(pathlib.Path(n)) for n in ('probe.c','launcher.c','gate.py')},'worker_sha256':digest(pathlib.Path('worker')),'runs':runs,'protected_state_unchanged':True,'no_unauthorized_durable_authority':True,'provider':'GitHub standard hosted VM ubuntu-22.04','execution':{k:os.environ[k] for k in ('GITHUB_SHA','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT') if k in os.environ}}
 shutil.rmtree(B);assert not B.exists();report['synthetic_fixture_removed']=True
 subprocess.run(['userdel','shaddowprobe'],check=True)
 assert all(not line.startswith('shaddowprobe:') for f in ('/etc/subuid','/etc/subgid','/etc/passwd') for line in pathlib.Path(f).read_text().splitlines())
