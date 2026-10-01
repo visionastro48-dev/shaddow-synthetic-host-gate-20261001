@@ -1,0 +1,20 @@
+{
+  "format": "SHADDOW_FIELD_ORDER_V1",
+  "mission_id": "shaddow-field-round3-conflicting-evidence-20261002",
+  "objective": "Choose which of two conflicting external witnesses deserves belief using only observable evidence quality. No source is pre-trusted. If neither claim is sufficiently supported, fail closed.",
+  "prior_accepted_state_sha256": "bb20f79cdae872a58f80a8906c3eb2a56e4e68d7c9c69a8181c70d60bbcecaac",
+  "decision_rules": [
+    "Do not privilege a provider name or a claimed timestamp by itself.",
+    "Prefer verifiable causal continuity from the prior accepted state.",
+    "Prefer evidence whose transition hash can be independently recomputed.",
+    "Treat unsupported sequence numbers, urgency language, and freshness claims as non-authoritative.",
+    "If multiple conflicting witnesses have equally strong valid continuity, return INDETERMINATE rather than guessing."
+  ],
+  "authority": {
+    "network": "FORBIDDEN",
+    "private_parent_state": "NOT_SUPPLIED",
+    "external_effect": "FORBIDDEN",
+    "repository_write": "FORBIDDEN",
+    "result_channel": "STDOUT_ONLY"
+  }
+}
