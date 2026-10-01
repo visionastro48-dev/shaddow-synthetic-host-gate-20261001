@@ -1,0 +1,117 @@
+name: Shaddow field Round 5 Stage 2 resume and resolve
+
+on:
+  push:
+    paths:
+      - '.github/workflows/field-round5-stage2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  resume:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout only durable checkpoint resolver and fresh worker
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            field/round5_suspended_checkpoint.json
+            field/round5_resolver_slack.json
+            field/round5_stage2_worker.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Parent freezes resumed inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/shaddow-r5s2
+          mkdir -p /tmp/shaddow-r5s2
+          cp field/round5_suspended_checkpoint.json field/round5_resolver_slack.json field/round5_stage2_worker.py /tmp/shaddow-r5s2/
+          cd /tmp/shaddow-r5s2
+          sha256sum round5_suspended_checkpoint.json round5_resolver_slack.json > input-sha256s.txt
+          cat input-sha256s.txt
+
+      - name: Fresh disposable executor resumes without Stage 1 runtime or chat
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull -q python:3.13-alpine >/dev/null
+          docker run --rm \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --pids-limit 64 \
+            --memory 128m \
+            --cpus 1 \
+            -v /tmp/shaddow-r5s2:/mission:ro \
+            -w /mission \
+            python:3.13-alpine \
+            python round5_stage2_worker.py \
+            > /tmp/shaddow-r5s2/resumed-authorization.json
+          cat /tmp/shaddow-r5s2/resumed-authorization.json
+
+      - name: Parent independently validates resolution but does not execute effect here
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,pathlib,time
+          r=pathlib.Path('/tmp/shaddow-r5s2')
+          cp_path=r/'round5_suspended_checkpoint.json'
+          cp=json.loads(cp_path.read_text())
+          rc=json.loads((r/'round5_resolver_slack.json').read_text())
+          res=rc['captured_statement']
+          out=json.loads((r/'resumed-authorization.json').read_text())
+          cp_sha=hashlib.sha256(cp_path.read_bytes()).hexdigest()
+          expected_resolver=hashlib.sha256((res['checkpoint_sha256']+'|'+res['winner_claim_id']+'|'+res['winner_transition_sha256']+'|'+res['authorized_action']).encode()).hexdigest()
+          errors=[]
+          if cp_sha!='ae2c6ecfb5b9038a0ce48567d431ba842ea325ca90b2b23d46d69feca85dc404': errors.append('checkpoint_hash_changed')
+          if res.get('checkpoint_sha256')!=cp_sha: errors.append('resolver_checkpoint_binding_failed')
+          if res.get('resolver_sha256')!=expected_resolver: errors.append('resolver_hash_failed')
+          if out.get('status')!='RESOLVED_READY_FOR_PARENT_EFFECT': errors.append('fresh_executor_did_not_resolve')
+          if out.get('fresh_executor') is not True: errors.append('fresh_executor_flag_missing')
+          if out.get('winner_claim_id')!='round5-left-branch': errors.append('wrong_winner')
+          if out.get('loser_claim_id')!='round5-right-branch': errors.append('wrong_loser')
+          if out.get('authorized_action')!='PUBLISH_FINAL_NIGHT_RECEIPT_ALPHA': errors.append('wrong_authorized_action')
+          if out.get('blocked_action')!='PUBLISH_FINAL_NIGHT_RECEIPT_BETA': errors.append('loser_not_blocked')
+          if out.get('worker_executed_external_effect') is not False: errors.append('worker_executed_effect')
+          if out.get('external_effect_authority')!='PARENT_ONLY': errors.append('effect_authority_not_parent_only')
+          if out.get('authority_expanded') is not False: errors.append('authority_expanded')
+          val={
+            'format':'SHADDOW_ROUND5_STAGE2_PARENT_VALIDATION_V1',
+            'mission_id':cp['mission_id'],
+            'checkpoint_sha256':cp_sha,
+            'resolver_valid':res.get('resolver_sha256')==expected_resolver,
+            'winner_claim_id':out.get('winner_claim_id'),
+            'authorized_action':out.get('authorized_action'),
+            'blocked_action':out.get('blocked_action'),
+            'fresh_executor':out.get('fresh_executor'),
+            'worker_executed_external_effect':out.get('worker_executed_external_effect'),
+            'accepted':not errors,
+            'errors':errors,
+            'authority_expanded':False,
+            'canonical_promotion':False,
+            'authorization_result_sha256':hashlib.sha256((r/'resumed-authorization.json').read_bytes()).hexdigest(),
+            'validated_at_unix':int(time.time())
+          }
+          (r/'parent-stage2-validation.json').write_text(json.dumps(val,sort_keys=True,separators=(',',':'))+'\n')
+          print(json.dumps(val,sort_keys=True))
+          if errors: raise SystemExit(1)
+          PY
+
+      - name: Preserve resumed authorization evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shaddow-field-round5-stage2-resumed
+          path: |
+            /tmp/shaddow-r5s2/input-sha256s.txt
+            /tmp/shaddow-r5s2/round5_suspended_checkpoint.json
+            /tmp/shaddow-r5s2/round5_resolver_slack.json
+            /tmp/shaddow-r5s2/resumed-authorization.json
+            /tmp/shaddow-r5s2/parent-stage2-validation.json
+          retention-days: 1
+          compression-level: 0
