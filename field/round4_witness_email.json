@@ -1,0 +1,20 @@
+{
+  "format": "SHADDOW_EXTERNAL_WITNESS_CAPTURE_V1",
+  "transport": "AgentMail",
+  "message_id": "<010001a0f9cbe34b-f322bde1-e4a5-4674-8424-4fcd0dde2893-000000@email.amazonses.com>",
+  "thread_id": "ad914256-9108-4486-844a-784975bb3f4e",
+  "source_timestamp": "2026-10-01T23:28:03.837Z",
+  "subject": "Round 4 witness — valid fork RIGHT",
+  "claim": {
+    "format": "SHADDOW_EXTERNAL_WITNESS_V1",
+    "source_kind": "authenticated_email_channel",
+    "claim_id": "round4-right-branch",
+    "claimed_sequence": 4,
+    "prior_state_sha256": "1454d032fa795369acf199b8099becd7aaf20e6ed1b1f2ddc4086e16f15fa307",
+    "state_value": "D-ROUND4-FORK-RIGHT",
+    "transition_rule": "sha256(prior_state_sha256 + '|' + state_value)",
+    "transition_sha256": "ab8e6322e2bb330131c9944b05040738f1a5f67bc1e2ec6fd0cce0365e42dfe1",
+    "claim": "This branch is the current successor of Home.",
+    "freshness_language": "ordinary"
+  }
+}
