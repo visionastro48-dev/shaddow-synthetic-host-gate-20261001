@@ -45,7 +45,7 @@ k=sorted(pathlib.Path('/boot').glob('vmlinuz-*-generic'))[-1];shutil.copy2(k,O/'
 q=pathlib.Path('/usr/bin/qemu-system-x86_64');shutil.copy2(q,O/'bin/qemu-system-x86_64')
 for p in deps(q):shutil.copy2(p.resolve(),O/'lib'/p.name)
 for p in ('/usr/share/qemu','/usr/share/seabios'):
- if pathlib.Path(p).exists():shutil.copytree(p,O/pathlib.Path(p).name,symlinks=False)
+ if pathlib.Path(p).exists():shutil.copytree(p,O/pathlib.Path(p).name,symlinks=False,ignore_dangling_symlinks=True)
 (O/'run').write_text('''#!/bin/sh
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -57,3 +57,4 @@ for p in O.rglob('*'):
   target=p.resolve();p.unlink();shutil.copy2(target,p)
 manifest={str(p.relative_to(O)):hashlib.sha256(p.read_bytes()).hexdigest() for p in O.rglob('*') if p.is_file()}
 (O/'SHA256_MANIFEST.json').write_text(json.dumps(manifest,sort_keys=True,indent=2))
+
