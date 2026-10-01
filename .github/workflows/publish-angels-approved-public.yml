@@ -1,0 +1,85 @@
+name: Publish approved ANGELS public site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'angels-public-site/**'
+      - '.github/workflows/publish-angels-approved-public.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout public carrier
+        uses: actions/checkout@v4
+
+      - name: Assemble exact approved public site
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://angels-relay-live-production.up.railway.app'
+          rm -rf /tmp/angels-public-site
+          mkdir -p /tmp/angels-public-site/assets
+          cp angels-public-site/index.html /tmp/angels-public-site/index.html
+          for f in styles.css app.js terms.html refund.html privacy.html; do
+            curl --fail --silent --show-error --location "$base/$f" -o "/tmp/angels-public-site/$f"
+          done
+          for f in hero.png vision.png capabilities.png impact.png; do
+            curl --fail --silent --show-error --location "$base/assets/$f" -o "/tmp/angels-public-site/assets/$f"
+          done
+          grep -q 'Agentify' /tmp/angels-public-site/index.html
+          grep -q 'AgentDNA' /tmp/angels-public-site/index.html
+          grep -q 'angels-info@agentmail.to' /tmp/angels-public-site/index.html
+          ! grep -q 'Khalil AI' /tmp/angels-public-site/index.html
+          ! grep -q 'Autopilot' /tmp/angels-public-site/index.html
+          cat > /tmp/angels-public-site/server.mjs <<'EOF'
+          import { createServer } from 'node:http';
+          import { readFile, stat } from 'node:fs/promises';
+          import { extname, join, normalize } from 'node:path';
+          const root='/site';
+          const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.png':'image/png','.svg':'image/svg+xml','.webp':'image/webp','.ico':'image/x-icon'};
+          createServer(async(req,res)=>{try{const p=decodeURIComponent(new URL(req.url||'/','http://localhost').pathname);const requested=p==='/'?'/index.html':p;const safe=normalize(requested).replace(/^([.][.][/\\])+/,'').replace(/^[/\\]+/,'');const file=join(root,safe);if(!file.startsWith(root))throw new Error('invalid');const info=await stat(file);if(!info.isFile())throw new Error('not-file');const body=await readFile(file);res.writeHead(200,{'content-type':types[extname(file).toLowerCase()]||'application/octet-stream','cache-control':extname(file)==='.html'?'no-cache':'public, max-age=86400','x-content-type-options':'nosniff'});res.end(body)}catch{res.writeHead(404,{'content-type':'text/plain; charset=utf-8'});res.end('Not found')}}).listen(process.env.PORT||8080,'0.0.0.0',()=>console.log('ANGELS_APPROVED_PUBLIC_SITE_READY'));
+          EOF
+          cat > /tmp/angels-public-site/Dockerfile <<'EOF'
+          FROM node:24-alpine
+          WORKDIR /site
+          COPY . .
+          ENV PORT=8080
+          EXPOSE 8080
+          CMD ["node","server.mjs"]
+          EOF
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and publish approved website image
+        uses: docker/build-push-action@v6
+        with:
+          context: /tmp/angels-public-site
+          push: true
+          tags: ghcr.io/visionastro48-dev/angels-site:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001
+            org.opencontainers.image.description=Founder-approved ANGELS public website only
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Validate anonymous pull
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io
+          docker pull ghcr.io/visionastro48-dev/angels-site:latest
+          echo 'ANGELS_SITE_ANONYMOUS_PULL_VALIDATED=1'
