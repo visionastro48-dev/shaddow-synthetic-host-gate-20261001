@@ -44,11 +44,17 @@ k=sorted(pathlib.Path('/boot').glob('vmlinuz-*-generic'))[-1];shutil.copy2(k,O/'
 (O/'lib').mkdir();(O/'bin').mkdir()
 q=pathlib.Path('/usr/bin/qemu-system-x86_64');shutil.copy2(q,O/'bin/qemu-system-x86_64')
 for p in deps(q):shutil.copy2(p.resolve(),O/'lib'/p.name)
+(O/'modules').mkdir()
+tcg=pathlib.Path('/usr/lib/x86_64-linux-gnu/qemu/accel-tcg-x86_64.so')
+assert tcg.is_file()
+shutil.copy2(tcg,O/'modules'/tcg.name)
+for p in deps(tcg):shutil.copy2(p.resolve(),O/'lib'/p.name)
 for p in ('/usr/share/qemu','/usr/share/seabios'):
  if pathlib.Path(p).exists():shutil.copytree(p,O/pathlib.Path(p).name,symlinks=False,ignore_dangling_symlinks=True)
 (O/'run').write_text('''#!/bin/sh
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+export QEMU_MODULE_DIR="$HERE/modules"
 exec "$HERE/lib/ld-linux-x86-64.so.2" --library-path "$HERE/lib" "$HERE/bin/qemu-system-x86_64" -L "$HERE/qemu" -machine pc -accel tcg -m 768 -smp 2 -nodefaults -no-reboot -nographic -serial mon:stdio -nic none -kernel "$HERE/vmlinuz" -initrd "$HERE/initramfs.gz" -append 'console=ttyS0 rdinit=/init panic=-1' "$@"
 ''');(O/'run').chmod(0o755)
 # Materialize firmware symlinks to avoid dependence on runner directories.
@@ -57,4 +63,3 @@ for p in O.rglob('*'):
   target=p.resolve();p.unlink();shutil.copy2(target,p)
 manifest={str(p.relative_to(O)):hashlib.sha256(p.read_bytes()).hexdigest() for p in O.rglob('*') if p.is_file()}
 (O/'SHA256_MANIFEST.json').write_text(json.dumps(manifest,sort_keys=True,indent=2))
-

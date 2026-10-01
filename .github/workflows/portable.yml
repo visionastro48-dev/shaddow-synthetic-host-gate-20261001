@@ -20,7 +20,7 @@ jobs:
           gcc -O2 -Wall -Wextra -static probe.c -o worker
           gcc -O2 -Wall -Wextra launcher.c -lseccomp -o launcher
           sudo python3 build_guest.py
-          timeout 240 sh -c 'printf "poweroff -f\n" | portable/run' > guest-synthetic.log 2>&1 || true
+          python3 smoke.py > guest-synthetic.log 2>&1
           cat guest-synthetic.log
           grep -q '^REAL_LINUX_SYNTHETIC_GATE_PASS' guest-synthetic.log
           tar czf portable-linux.tar.gz portable
