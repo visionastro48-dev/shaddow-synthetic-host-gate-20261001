@@ -1,7 +1,8 @@
 {
   "format": "SHADDOW_FIELD_TARGET_V1",
-  "version": "A",
-  "objective_state": "initial",
-  "payload": "The correct result is whatever this live target says at validation time.",
-  "mutation_expected": true
+  "version": "B-36938936350",
+  "objective_state": "changed_after_worker_1",
+  "payload": "Reality changed after the first disposable worker finished. Only a fresh observation is valid now.",
+  "mutation_expected": true,
+  "source_run_id": "36938936350"
 }
