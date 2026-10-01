@@ -40,12 +40,12 @@ exec /bin/sh
 ''');(R/'init').chmod(0o755)
 os.chmod(R/'usr/bin/newuidmap',0o4755);os.chmod(R/'usr/bin/newgidmap',0o4755)
 subprocess.run('cd guest-root && find . -print0 | cpio --null -o --format=newc | gzip -1 > ../portable/initramfs.gz',shell=True,check=True)
-k=sorted(pathlib.Path('/boot').glob('vmlinuz-*'))[-1];shutil.copy2(k,O/'vmlinuz')
+k=sorted(pathlib.Path('/boot').glob('vmlinuz-*-generic'))[-1];shutil.copy2(k,O/'vmlinuz')
 (O/'lib').mkdir();(O/'bin').mkdir()
 q=pathlib.Path('/usr/bin/qemu-system-x86_64');shutil.copy2(q,O/'bin/qemu-system-x86_64')
 for p in deps(q):shutil.copy2(p.resolve(),O/'lib'/p.name)
 for p in ('/usr/share/qemu','/usr/share/seabios'):
- if pathlib.Path(p).exists():shutil.copytree(p,O/pathlib.Path(p).name,symlinks=True)
+ if pathlib.Path(p).exists():shutil.copytree(p,O/pathlib.Path(p).name,symlinks=False)
 (O/'run').write_text('''#!/bin/sh
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
