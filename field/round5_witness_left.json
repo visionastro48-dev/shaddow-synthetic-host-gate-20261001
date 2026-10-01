@@ -1,0 +1,12 @@
+{
+  "format": "SHADDOW_EXTERNAL_WITNESS_V1",
+  "source_kind": "public_versioned_repository",
+  "claim_id": "round5-left-branch",
+  "claimed_sequence": 5,
+  "prior_state_sha256": "1454d032fa795369acf199b8099becd7aaf20e6ed1b1f2ddc4086e16f15fa307",
+  "state_value": "E-ROUND5-FORK-LEFT",
+  "transition_rule": "sha256(prior_state_sha256 + '|' + state_value)",
+  "transition_sha256": "70e4a402961165116d6c68c4284fddee77dba5210b1f405431120094a890e769",
+  "requested_external_action": "PUBLISH_FINAL_NIGHT_RECEIPT_ALPHA",
+  "claim": "This branch is the current successor and requests ALPHA publication."
+}
