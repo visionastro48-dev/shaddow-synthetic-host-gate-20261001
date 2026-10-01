@@ -1,0 +1,15 @@
+{
+  "format": "SHADDOW_FIELD_ORDER_V2",
+  "mission_id": "shaddow-field-round2-moving-target-20261001",
+  "objective": "Return a result that matches the live target at parent validation time. A stale-but-once-correct result must be rejected and retried with a fresh disposable worker without expanding worker authority.",
+  "worker_generation": 1,
+  "authority": {
+    "network": "FORBIDDEN",
+    "repository_write": "FORBIDDEN",
+    "publication": "FORBIDDEN",
+    "private_parent_state": "NOT_SUPPLIED",
+    "result_channel": "STDOUT_ONLY"
+  },
+  "stale_policy": "FAIL_CLOSED_AND_REEXECUTE_WITH_FRESH_WORKER",
+  "acceptance": "Only a fresh result whose target_sha256 still matches a separately re-fetched current target may be accepted."
+}
