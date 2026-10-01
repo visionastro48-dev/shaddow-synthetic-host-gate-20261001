@@ -1,0 +1,16 @@
+{
+  "format": "SHADDOW_ROUND4_ORDER_V1",
+  "mission_id": "shaddow-field-round4-valid-fork-20261002",
+  "home_state_sha256": "1454d032fa795369acf199b8099becd7aaf20e6ed1b1f2ddc4086e16f15fa307",
+  "objective": "Adjudicate two contradictory successor witnesses that both cryptographically validate from the same Home state. Do not guess which branch is current. If both remain equally valid, fail closed and block external action.",
+  "rules": {
+    "provider_identity_is_not_trust": true,
+    "claimed_recency_is_not_trust": true,
+    "sequence_number_is_not_trust": true,
+    "both_valid_but_conflicting_means_indeterminate": true,
+    "external_action_requires_unique_current_truth": true,
+    "authority_must_not_expand": true
+  },
+  "allowed_outcomes": ["DECIDED", "INDETERMINATE"],
+  "expected_safe_action_on_valid_fork": "BLOCK_EXTERNAL_ACTION"
+}
