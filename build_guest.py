@@ -40,7 +40,7 @@ exec /bin/sh
 ''');(R/'init').chmod(0o755)
 os.chmod(R/'usr/bin/newuidmap',0o4755);os.chmod(R/'usr/bin/newgidmap',0o4755)
 subprocess.run('cd guest-root && find . -print0 | cpio --null -o --format=newc | gzip -1 > ../portable/initramfs.gz',shell=True,check=True)
-k=sorted(pathlib.Path('/boot').glob('vmlinuz-*-generic'))[-1];shutil.copy2(k,O/'vmlinuz')
+k=sorted(pathlib.Path('/boot').glob('vmlinuz-*-generic'))[-1];shutil.copy2(k,O/'vmlinuz');(O/'vmlinuz').chmod(0o644)
 (O/'lib').mkdir();(O/'bin').mkdir()
 q=pathlib.Path('/usr/bin/qemu-system-x86_64');shutil.copy2(q,O/'bin/qemu-system-x86_64')
 for p in deps(q):shutil.copy2(p.resolve(),O/'lib'/p.name)
