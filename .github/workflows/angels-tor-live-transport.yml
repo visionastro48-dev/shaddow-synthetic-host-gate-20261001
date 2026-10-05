@@ -1,0 +1,155 @@
+name: ANGELS Tor Live Transport Crucible
+
+on:
+  push:
+    paths:
+      - '.github/workflows/angels-tor-live-transport.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: angels-tor-live-transport
+  cancel-in-progress: true
+
+jobs:
+  tor-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tor and test tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tor curl openssl coreutils jq
+          tor --version | head -1
+
+      - name: Run authenticated v3 onion transport crucible
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/angels-tor"
+          mkdir -p "$ROOT"/{service-data,client-data,unauth-data,hs/authorized_clients,client-auth}
+          chmod 700 "$ROOT"/{service-data,client-data,unauth-data,hs,hs/authorized_clients,client-auth}
+
+          # Ephemeral X25519 authorization keypair; private key never leaves runner.
+          openssl genpkey -algorithm X25519 -out "$ROOT/client.pem" >/dev/null 2>&1
+          openssl pkey -in "$ROOT/client.pem" -outform DER -out "$ROOT/client.der"
+          openssl pkey -in "$ROOT/client.pem" -pubout -outform DER -out "$ROOT/client.pub.der"
+          PRIV="$(tail -c 32 "$ROOT/client.der" | base32 | tr -d '=\n')"
+          PUB="$(tail -c 32 "$ROOT/client.pub.der" | base32 | tr -d '=\n')"
+          test "${#PRIV}" -eq 52
+          test "${#PUB}" -eq 52
+          printf 'descriptor:x25519:%s\n' "$PUB" > "$ROOT/hs/authorized_clients/angels.auth"
+          chmod 600 "$ROOT/hs/authorized_clients/angels.auth"
+
+          NONCE="tor-$(date +%s)-$RANDOM"
+          cat > "$ROOT/server.py" <<'PY'
+          import json, os
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          NONCE=os.environ['ANGELS_TOR_NONCE']
+          class H(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path != '/replication/probe':
+                      self.send_response(404); self.end_headers(); return
+                  body=json.dumps({"ok":True,"schema":"angels.tor-transport-probe/v1","nonce":NONCE,"authority":"synthetic-none","state_mutation":False},sort_keys=True).encode()
+                  self.send_response(200)
+                  self.send_header('Content-Type','application/json')
+                  self.send_header('Content-Length',str(len(body)))
+                  self.end_headers(); self.wfile.write(body)
+              def log_message(self,*args): pass
+          HTTPServer(('127.0.0.1',18088),H).serve_forever()
+          PY
+          ANGELS_TOR_NONCE="$NONCE" python3 "$ROOT/server.py" >"$ROOT/http.log" 2>&1 &
+          HTTP_PID=$!
+          trap 'kill $HTTP_PID ${SERVICE_PID:-0} ${CLIENT_PID:-0} ${UNAUTH_PID:-0} 2>/dev/null || true' EXIT
+          curl --fail --silent http://127.0.0.1:18088/replication/probe | jq -e --arg n "$NONCE" '.ok==true and .nonce==$n and .state_mutation==false' >/dev/null
+
+          cat > "$ROOT/service.torrc" <<EOF
+          DataDirectory $ROOT/service-data
+          SocksPort 0
+          HiddenServiceDir $ROOT/hs
+          HiddenServiceVersion 3
+          HiddenServicePort 80 127.0.0.1:18088
+          Log notice file $ROOT/service.log
+          EOF
+          tor -f "$ROOT/service.torrc" &
+          SERVICE_PID=$!
+
+          for i in $(seq 1 120); do
+            if [ -s "$ROOT/hs/hostname" ] && grep -q 'Bootstrapped 100%' "$ROOT/service.log"; then break; fi
+            sleep 1
+          done
+          test -s "$ROOT/hs/hostname"
+          grep -q 'Bootstrapped 100%' "$ROOT/service.log"
+          ONION="$(tr -d '\n' < "$ROOT/hs/hostname")"
+          ONION_BASE="${ONION%.onion}"
+          test "${#ONION_BASE}" -eq 56
+
+          printf '%s:descriptor:x25519:%s\n' "$ONION_BASE" "$PRIV" > "$ROOT/client-auth/angels.auth_private"
+          chmod 600 "$ROOT/client-auth/angels.auth_private"
+
+          cat > "$ROOT/client.torrc" <<EOF
+          DataDirectory $ROOT/client-data
+          SocksPort 19050
+          ClientOnionAuthDir $ROOT/client-auth
+          Log notice file $ROOT/client.log
+          EOF
+          tor -f "$ROOT/client.torrc" &
+          CLIENT_PID=$!
+
+          cat > "$ROOT/unauth.torrc" <<EOF
+          DataDirectory $ROOT/unauth-data
+          SocksPort 19052
+          Log notice file $ROOT/unauth.log
+          EOF
+          tor -f "$ROOT/unauth.torrc" &
+          UNAUTH_PID=$!
+
+          for i in $(seq 1 120); do
+            grep -q 'Bootstrapped 100%' "$ROOT/client.log" && grep -q 'Bootstrapped 100%' "$ROOT/unauth.log" && break
+            sleep 1
+          done
+          grep -q 'Bootstrapped 100%' "$ROOT/client.log"
+          grep -q 'Bootstrapped 100%' "$ROOT/unauth.log"
+
+          # Descriptor publication can lag bootstrap slightly.
+          AUTH_OK=0
+          for i in $(seq 1 12); do
+            if curl --fail --silent --show-error --socks5-hostname 127.0.0.1:19050 --max-time 20 "http://$ONION/replication/probe" > "$ROOT/auth.json"; then
+              if jq -e --arg n "$NONCE" '.ok==true and .nonce==$n and .authority=="synthetic-none" and .state_mutation==false' "$ROOT/auth.json" >/dev/null; then AUTH_OK=1; break; fi
+            fi
+            sleep 5
+          done
+          test "$AUTH_OK" -eq 1
+
+          set +e
+          curl --silent --show-error --socks5-hostname 127.0.0.1:19052 --max-time 12 "http://$ONION/replication/probe" > "$ROOT/unauth.body" 2> "$ROOT/unauth.err"
+          UNAUTH_RC=$?
+          set -e
+          test "$UNAUTH_RC" -ne 0
+
+          mkdir -p evidence
+          jq -n \
+            --arg observed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg onion "$ONION" \
+            --arg public_auth_key "$PUB" \
+            --arg nonce "$NONCE" \
+            --arg tor_version "$(tor --version | head -1)" \
+            --argjson unauthorized_rc "$UNAUTH_RC" \
+            '{schema:"angels.tor-live-transport/v1",result:"PASS",observed_at:$observed_at,runner:"github-actions-public-synthetic-host-gate",tor_version:$tor_version,onion_service:$onion,client_authorization:{type:"descriptor:x25519",public_key:$public_auth_key,authorized_request_http_200:true,unauthorized_request_rejected:true,unauthorized_curl_rc:$unauthorized_rc,private_key_persisted:false},probe:{nonce:$nonce,path:"/replication/probe",state_mutation:false,authority:"synthetic-none"},truth_boundary:"Proves live Tor v3 onion transport plus Tor client authorization on a disposable public runner. Does not prove independent persistent Node B, V2 replication, or cross-provider canonical promotion."}' > evidence/angels-tor-live-transport.json
+
+          cat evidence/angels-tor-live-transport.json | jq .
+
+      - name: Persist evidence receipt
+        run: |
+          set -euo pipefail
+          git config user.name 'ANGELS Evidence Bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add evidence/angels-tor-live-transport.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'evidence: live authenticated Tor transport crucible'
+          git push
