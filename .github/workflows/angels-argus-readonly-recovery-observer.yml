@@ -1,3 +1,4 @@
+# Source PostgreSQL health observation only; does not certify native dump, restore or authority.
 # Read-only dual-track observation validation; never grant execution authority.
 name: ANGELS ARGUS Bounded Recovery Observer
 on:
