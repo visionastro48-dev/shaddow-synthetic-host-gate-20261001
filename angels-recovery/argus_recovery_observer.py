@@ -19,6 +19,8 @@ ENDPOINTS = {
     "headquarters": "https://angels-hq.lovable.app/api/control/health",
     "fabric_route": ROOT + "/ascr-route?capability=control.observability.readonly",
     "readiness": ROOT + "/company-recovery-readiness",
+    "fabric_health": "https://angels-workspace-fabric.agentify-cloudflare-public-read.workers.dev/health",
+    "fleet_cadence": "https://angels-workspace-fabric.agentify-cloudflare-public-read.workers.dev/ceo-report",
 }
 
 
@@ -68,6 +70,42 @@ def check(name, http, body):
                  and body.get("selected", {}).get("id") == "cloudflare-supervisor"
                  and body.get("policy", {}).get("provider_is_authority") is False)
         return valid, {"selected": body.get("selected", {}).get("id")}
+    if name == "fabric_health":
+        stamp = datetime.fromisoformat(body["time"].replace("Z", "+00:00"))
+        age = (datetime.now(timezone.utc) - stamp).total_seconds()
+        valid = (http == 200 and body.get("service") == "angels-workspace-fabric"
+                 and body.get("status") == "ok" and -60 <= age <= 900)
+        return valid, {"status": body.get("status"),
+                       "age_seconds": round(age),
+                       "company_execution_certified": False}
+    if name == "fleet_cadence":
+        stamp = datetime.fromisoformat(body["generated_at"].replace("Z", "+00:00"))
+        age = (datetime.now(timezone.utc) - stamp).total_seconds()
+        reports = body.get("reports", [])
+        fresh = []
+        for report in reports:
+            last = (report.get("runtime") or {}).get("last_cycle_at")
+            tick = datetime.fromisoformat(last.replace("Z", "+00:00"))
+            fresh.append(-60 <= (datetime.now(timezone.utc) - tick).total_seconds() <= 900)
+        counts_valid = all(
+            isinstance((report.get("counts") or {}).get(k), int)
+            and (report.get("counts") or {})[k] >= 0
+            for report in reports for k in ("queued", "executing", "verified", "failures")
+        )
+        valid = (http == 200 and body.get("service") == "angels-ceo-report"
+                 and body.get("chatgpt_hosts_ceos") is False
+                 and body.get("reporting_cadence") == "5m"
+                 and -60 <= age <= 900 and bool(reports)
+                 and all(fresh) and counts_valid)
+        return valid, {
+            "age_seconds": round(age),
+            "observed_roles": len(reports),
+            "queued": sum(x["counts"]["queued"] for x in reports) if counts_valid else None,
+            "executing": sum(x["counts"]["executing"] for x in reports) if counts_valid else None,
+            "historical_verified": sum(x["counts"]["verified"] for x in reports) if counts_valid else None,
+            "mission_handover_acked": False,
+            "production_authority_certified": False,
+        }
     if name == "readiness":
         valid = (http == 503 and body.get("schema") == "angels.company-recovery-readiness/v1"
                  and body.get("decision") == "HOLD_CANONICAL_WORKERS"
