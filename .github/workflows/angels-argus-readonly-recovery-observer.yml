@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/angels-argus-readonly-recovery-observer.yml'
+      - 'angels-recovery/argus_legacy_db_transport.py'
   schedule:
     - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
