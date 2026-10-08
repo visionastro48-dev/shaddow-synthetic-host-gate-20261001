@@ -27,3 +27,5 @@ jobs:
         run: python3 angels-recovery/test_argus_recovery_observer.py
       - name: Verify actual ANGELS infrastructure and fail-closed recovery gate
         run: python3 angels-recovery/argus_recovery_observer.py
+      - name: Observe legacy Supabase PostgreSQL TCP transport without credentials
+        run: python3 angels-recovery/argus_legacy_db_transport.py
