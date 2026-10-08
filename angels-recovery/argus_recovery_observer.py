@@ -21,6 +21,7 @@ ENDPOINTS = {
     "readiness": ROOT + "/company-recovery-readiness",
     "fabric_health": "https://angels-workspace-fabric.agentify-cloudflare-public-read.workers.dev/health",
     "fleet_cadence": "https://angels-workspace-fabric.agentify-cloudflare-public-read.workers.dev/ceo-report",
+    "foundation_source_postgres": "https://angels-ascr-standby.floot.app/_api/ascr-health",
 }
 
 
@@ -105,6 +106,30 @@ def check(name, http, body):
             "historical_verified": sum(x["counts"]["verified"] for x in reports) if counts_valid else None,
             "mission_handover_acked": False,
             "production_authority_certified": False,
+        }
+    if name == "foundation_source_postgres":
+        stamp = datetime.fromisoformat(body["observed_at"].replace("Z", "+00:00"))
+        age = (datetime.now(timezone.utc) - stamp).total_seconds()
+        caps = body.get("capabilities", [])
+        valid = (
+            http == 200 and body.get("ok") is True
+            and body.get("schema") == "angels.ascr-carrier-health/v1"
+            and body.get("carrier") == "floot-neon"
+            and body.get("database") == "PASS"
+            and isinstance(caps, list)
+            and "state.relational.failover" in caps
+            and body.get("authority_widened") is False
+            and body.get("irreversible_external_effect") is False
+            and -60 <= age <= 900
+        )
+        return valid, {
+            "database_health": body.get("database"),
+            "carrier": body.get("carrier"),
+            "age_seconds": round(age),
+            "native_pg_dump_verified": False,
+            "native_pg_restore_certified": False,
+            "worker_ack_proved": False,
+            "authority_widened": False,
         }
     if name == "readiness":
         valid = (http == 503 and body.get("schema") == "angels.company-recovery-readiness/v1"
