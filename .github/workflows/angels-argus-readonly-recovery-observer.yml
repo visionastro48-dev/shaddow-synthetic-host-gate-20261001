@@ -1,0 +1,25 @@
+name: ANGELS ARGUS Bounded Recovery Observer
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/angels-argus-readonly-recovery-observer.yml'
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: angels-argus-readonly-recovery-observer
+  cancel-in-progress: false
+jobs:
+  read-only-recovery-observation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout public observer code only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify actual ANGELS infrastructure and fail-closed recovery gate
+        run: python3 angels-recovery/argus_recovery_observer.py
