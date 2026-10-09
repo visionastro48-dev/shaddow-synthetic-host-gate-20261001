@@ -95,6 +95,15 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(req.get("messages"), list) or not req["messages"]:
             return self.send_json(400, {"error":{"message":"messages_required"}})
         wants_stream = req.get("stream") is True
+        # This is a CODING smoke test; the worker must call an actual tool.
+        tool_list = req.get("tools") or []
+        if not isinstance(tool_list, list) or len(tool_list) == 0:
+            return self.send_json(400, {"error":{"message":"no_worker_tools_exposed"}})
+        tool_names = [t.get("function", {}).get("name", "") for t in tool_list if isinstance(t, dict)]
+        print(json.dumps({"event":"HERMES_TOOLS_EXPOSED","count":len(tool_list),
+                          "names":tool_names[:35]}), flush=True)
+        req["tool_choice"] = "required"
+        req["parallel_tool_calls"] = False
         req["stream"] = False
         # Force free model to produce useful output instead of spending the entire cap on reasoning.
         req["reasoning"] = {"enabled": False}
