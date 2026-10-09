@@ -96,7 +96,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(400, {"error":{"message":"messages_required"}})
         wants_stream = req.get("stream") is True
         req["stream"] = False
-        req["max_tokens"] = min(max(int(req.get("max_tokens") or 128), 1), 768)
+        # Force free model to produce useful output instead of spending the entire cap on reasoning.
+        req["reasoning"] = {"enabled": False}
+        req["include_reasoning"] = False
+        req["max_tokens"] = min(max(int(req.get("max_tokens") or 256), 1), 1536)
         wire = json.dumps(req, separators=(",", ":")).encode("utf-8")
         try:
             # Deliberately NO Authorization header. Credentials from Hermes are NEVER relayed.
