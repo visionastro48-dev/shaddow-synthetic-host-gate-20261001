@@ -8,9 +8,10 @@ on:
       - 'angels-recovery/forge-real-model-coding.py'
       - '.github/workflows/angels-forge-real-local-coding.yml'
   schedule:
-    # Synthetic, zero-authority trial on free standard public-repo runners.
-    # This is NOT continuous 24/7 operation or ANGELS Gateway admission.
-    - cron: '17 */6 * * *'
+    # Synthetic, zero-authority acceptance on standard public-repo runners.
+    # Hourly at :47 UTC; best-effort GitHub scheduling, NOT a 24/7 worker.
+    # This never enrolls with or receives production authority from ANGELS.
+    - cron: '47 * * * *'
   workflow_dispatch:
 permissions:
   contents: read
