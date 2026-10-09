@@ -12,7 +12,7 @@ export WORK="$(mktemp -d /tmp/angels-forge-synthetic.XXXXXX)"
 trap 'sudo docker rm -f angels-ollama-test >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
 mkdir -p "$WORK";cd "$WORK"
 printf '%s\n' '{"production_authority_enabled":false,"external_side_effects_enabled":false,"legacy_job_replay_enabled":false}' > safe.json
-sudo docker run --rm -d --name angels-ollama-test -p 127.0.0.1:11434:11434 -e OLLAMA_CONTEXT_LENGTH=16384 -e OLLAMA_NUM_PARALLEL=1 ollama/ollama:0.11.10 >/dev/null
+sudo docker run --rm -d --name angels-ollama-test -p 127.0.0.1:11434:11434 -e OLLAMA_CONTEXT_LENGTH=8192 -e OLLAMA_NUM_PARALLEL=1 ollama/ollama:0.11.10 >/dev/null
 for i in {1..30};do if curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1;then break;fi;sleep 2;done
 curl -fsS --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null
 echo "ANGELS_MODEL_DOWNLOAD_START"
@@ -66,10 +66,11 @@ export LLM_MODEL='ollama_chat/qwen3:4b-instruct'
 export LLM_API_KEY='local-synthetic-model-no-account-key'
 export LLM_BASE_URL='http://127.0.0.1:11434'
 export OPENHANDS_MAX_ITERATIONS=12
-task="You are a synthetic FORGE-role engineering trial within an EMPTY, DISPOSABLE WORKDIR. This is NOT company production and grants NO authority. Using your coding tools, create only the file gate_verify.py in the present workdir. The Python 3 script must accept a JSON input file path via sys.argv[1], check that production_authority_enabled, external_side_effects_enabled, and legacy_job_replay_enabled are each present and are exactly type bool and False, print FAIL_CLOSED_OK and exit code 0 only for that safe input; for any other condition, missing arguments, invalid JSON or missing file print BLOCKED and exit 2. Do not touch Git, network, credentials, customer data, payments, production, parent directories, or other files. Test the program. Stop after the file is created."
-echo "ANGELS_OPENHANDS_REAL_TASK_START"
+# Lean native OpenHands SDK Agent with one terminal tool, rather than heavyweight CLI preset.
+export ALLOW_SHORT_CONTEXT_WINDOWS=1
+echo "ANGELS_NATIVE_OPENHANDS_LEAN_SDK_START"
 set +e
-timeout 850 openhands --headless --json --override-with-envs --exit-without-confirmation -t "$task" >"$WORK/agent.log" 2>&1
+timeout 540 "$HOME/.local/share/uv/tools/openhands/bin/python" "$GITHUB_WORKSPACE/angels-recovery/openhands-forge-lean-sdk.py" >"$WORK/agent.log" 2>&1
 agent_status=$?
 set -e
 echo "ANGELS_OPENHANDS_AGENT_EXIT=$agent_status"
