@@ -1,0 +1,143 @@
+# First actual TITAN engineering mission for the verified isolated free Hermes carrier.
+# No private ANGELS source, secrets, production authority or paid-model fallback.
+name: TITAN Hermes First Engineering Work
+on:
+  push:
+    branches: [lab/titan-hermes-first-work-20261009]
+    paths: [.github/workflows/titan-hermes-first-work.yml]
+permissions: {}
+jobs:
+  titan-real-hermes:
+    if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 27
+    steps:
+      - name: Verify disposable carrier
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = "visionastro48-dev/shaddow-synthetic-host-gate-20261001"
+          test ! -e .git
+          test ! -e "$HOME/.hermes"
+          test ! -e /srv/angels-foundation-v1
+          echo 'TITAN_ISOLATED_NO_PRODUCTION_AUTHORITY=true'
+
+      - name: Install real Hermes Agent
+        timeout-minutes: 18
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export HOME="$RUNNER_TEMP/hermes-user"
+          export HERMES_HOME="$HOME/.hermes"
+          mkdir -p "$HOME"
+          curl -fsSL --retry 2 --connect-timeout 15 https://hermes-agent.nousresearch.com/install.sh -o "$RUNNER_TEMP/hermes-install.sh"
+          bash "$RUNNER_TEMP/hermes-install.sh" --non-interactive --skip-browser --skip-computer-use --hermes-home "$HERMES_HOME" --dir "$HERMES_HOME/hermes-agent"
+          echo "HOME=$HOME" >> "$GITHUB_ENV"
+          echo "HERMES_HOME=$HERMES_HOME" >> "$GITHUB_ENV"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HERMES_HOME/bin" >> "$GITHUB_PATH"
+          echo 'TITAN_UPSTREAM_HERMES_INSTALLED=true'
+
+      - name: Ask Hermes to implement TITAN lease policy
+        shell: bash
+        timeout-minutes: 6
+        run: |
+          set -Eeuo pipefail
+          export PATH="$HOME/.local/bin:$HERMES_HOME/bin:$PATH"
+          hermes --help >/dev/null
+          curl -fsSL --retry 2 --connect-timeout 10 https://raw.githubusercontent.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/e2f4b8fe20e81af0a4172600417c03a9bec147b4/angels-recovery/hermes-free-noauth-proxy.py -o "$RUNNER_TEMP/free-proxy.py"
+          python3 -u "$RUNNER_TEMP/free-proxy.py" > "$RUNNER_TEMP/free-proxy.log" 2>&1 &
+          proxy_pid=$!
+          trap 'kill "$proxy_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 15); do
+            if curl -fsS --max-time 1 http://127.0.0.1:8765/health >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+          mkdir -p "$HERMES_HOME" "$RUNNER_TEMP/titan-workspace/titan"
+          chmod 700 "$HERMES_HOME"
+          printf '%s\n' 'model:' '  default: "cohere/north-mini-code:free"' '  provider: custom' '  base_url: "http://127.0.0.1:8765/v1"' '  api_key: ""' 'fallback_providers: []' 'terminal:' '  backend: local' > "$HERMES_HOME/config.yaml"
+          chmod 600 "$HERMES_HOME/config.yaml"
+          cat > "$RUNNER_TEMP/titan-task.txt" <<'PROMPT'
+          You are Nous Research Hermes Agent. Do actual Project TITAN engineering in this disposable workspace. No production access, secrets, private source, deployments, payments, messages or external changes are authorized.
+          Use terminal or write_file tool to create exactly titan/lease_policy.py with pure Python, no dependencies. Do NOT merely describe code.
+          Implement the interfaces:
+          def classify_job(job: dict, now_epoch: int) -> str
+          def can_claim(job: dict, now_epoch: int, expected_generation: int) -> bool
+          Valid job must be a dict with nonempty string job_id and authorized exactly True.
+          Invalid jobs or unknown state => BLOCKED.
+          For valid job: state PENDING => READY; COMPLETED => DONE; FAILED => REPAIR.
+          RUNNING requires lease_expires_at to be type int (NOT bool). If deadline <= now_epoch => RECOVER; otherwise => ACTIVE. Missing or invalid deadline => BLOCKED.
+          can_claim is True only if classify_job is READY or RECOVER, job.generation is type int not bool, and expected_generation is type int not bool and equals job.generation. Else False.
+          No mutation, database, network, or side effects. The file must contain real importable functions. Run python3 -m py_compile titan/lease_policy.py, read it back, and report the actual file. Do not change other files.
+          PROMPT
+          cd "$RUNNER_TEMP/titan-workspace"
+          echo "TITAN_HERMES_WORK_STARTED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          set +e
+          timeout 220 hermes chat --oneshot --quiet --toolsets "terminal,file" --max-turns 14 --provider custom --model "cohere/north-mini-code:free" --query-file "$RUNNER_TEMP/titan-task.txt" > "$RUNNER_TEMP/hermes-log.txt" 2>&1
+          rc=$?
+          set -e
+          echo "TITAN_HERMES_EXIT_CODE=$rc"
+          sed -n '1,90p' "$RUNNER_TEMP/hermes-log.txt"
+          grep '"event": "FREE_INFERENCE_RECEIPT"' "$RUNNER_TEMP/free-proxy.log" || true
+          test "$rc" -eq 0
+          grep -q '"event": "FREE_INFERENCE_RECEIPT"' "$RUNNER_TEMP/free-proxy.log"
+          test -f titan/lease_policy.py && test ! -L titan/lease_policy.py
+          test "$(wc -c < titan/lease_policy.py)" -le 20000
+          python3 -m py_compile titan/lease_policy.py
+          sha256sum titan/lease_policy.py
+          echo 'TITAN_HERMES_REAL_CODE_GENERATED=true'
+
+      - name: Independently test Hermes-created code
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat > "$RUNNER_TEMP/titan-independent-test.py" <<'PY'
+          import importlib.util, pathlib, os
+          path = pathlib.Path(os.environ['RUNNER_TEMP'])/'titan-workspace/titan/lease_policy.py'
+          s=importlib.util.spec_from_file_location('titan_lease',path)
+          m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+          def j(state='PENDING', **kw):
+              a=dict(job_id='titan-001',authorized=True,state=state,generation=7)
+              a.update(kw)
+              return a
+          scenarios=[
+              (j(),100,'READY'),(j('COMPLETED'),100,'DONE'),(j('FAILED'),100,'REPAIR'),
+              (j('RUNNING',lease_expires_at=105),100,'ACTIVE'),
+              (j('RUNNING',lease_expires_at=100),100,'RECOVER'),
+              (j('RUNNING',lease_expires_at=90),100,'RECOVER'),
+              (j('RUNNING'),100,'BLOCKED'),(j('OTHER'),100,'BLOCKED'),
+              (j(authorized=False),100,'BLOCKED'),(j(job_id=''),100,'BLOCKED'),
+              (j('RUNNING',lease_expires_at=True),100,'BLOCKED'),
+              ({},100,'BLOCKED'),(None,100,'BLOCKED')
+          ]
+          for index,(data,now,expected) in enumerate(scenarios):
+              got=m.classify_job(data,now)
+              assert got==expected,(index,got,expected)
+          claims=[(j(),100,7,True),
+                  (j('RUNNING',lease_expires_at=99),100,7,True),
+                  (j('RUNNING',lease_expires_at=101),100,7,False),
+                  (j('FAILED'),100,7,False),
+                  (j(),100,2,False),(j(generation=True),100,1,False),
+                  (j(),100,True,False),(j(authorized=False),100,7,False)]
+          for index,(data,now,gen,expected) in enumerate(claims):
+              got=m.can_claim(data,now,gen)
+              assert got is expected,('claim',index,got,expected)
+          print('TITAN_HERMES_INDEPENDENT_TESTS_PASSED='+str(len(scenarios)+len(claims)))
+          print('TITAN_FIRST_ENGINEERING_DELIVERABLE_VERIFIED=true')
+          PY
+          python3 "$RUNNER_TEMP/titan-independent-test.py"
+          mkdir -p /tmp/titan-hermes-output
+          cp "$RUNNER_TEMP/titan-workspace/titan/lease_policy.py" /tmp/titan-hermes-output/lease_policy.py
+          sha256sum /tmp/titan-hermes-output/lease_policy.py
+          echo 'NO_PRODUCTION_AUTHORITY=true'
+          echo 'PERSISTENT_24X7=false'
+
+      - name: Preserve generated TITAN source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: titan-hermes-first-engineering-output
+          path: /tmp/titan-hermes-output/
+          if-no-files-found: warn
+          retention-days: 7
