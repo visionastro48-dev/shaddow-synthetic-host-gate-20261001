@@ -1,0 +1,36 @@
+{
+  "record_type": "FORGE independently verified synthetic coding evidence",
+  "date_utc": "2026-10-09",
+  "repository": "visionastro48-dev/shaddow-synthetic-host-gate-20261001",
+  "workflow_run_url": "https://github.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/actions/runs/37921919891",
+  "workflow_run_id": 37921919891,
+  "job_id": 113791624934,
+  "trigger": "push",
+  "run_conclusion": "success",
+  "commit_sha": "761e9eda6328b47983b481797d24205f839e999a",
+  "model": "qwen3:4b-instruct",
+  "actual_model_structured_tool_call": true,
+  "model_generation_attempts": 1,
+  "workflow_independent_cases": {
+    "passed": 11,
+    "total": 11
+  },
+  "downloaded_artifact_independent_cases": {
+    "passed": 19,
+    "total": 19
+  },
+  "model_generated_source_sha256": "f4f882d7bf11c8b627c1de5ac2bca277bd8550c1f18dc3d8b00eeba3e0623463",
+  "downloaded_artifact_receipt_digest_match": true,
+  "github_artifact": {
+    "id": 11611823754,
+    "name": "angels-forge-accepted",
+    "artifact_archive_sha256": "6679bd373a1c8016362a5ff9998dd6d1e0eea8bed80869c99a9db8e4b967f329",
+    "expires_at_utc": "2026-10-16T11:10:59Z"
+  },
+  "mission_type": "synthetic_no_authority",
+  "gateway_enrolled": false,
+  "production_mission_received": false,
+  "scheduled_cycle_observed": false,
+  "continuous_24_7_certified": false,
+  "limitations": "Independent 19-case retest performed on downloaded and hash-verified Python source in a disposable isolated local directory. This evidence record cannot prove unattended scheduled firing, authenticated ANGELS enrollment or permanent host recovery."
+}
