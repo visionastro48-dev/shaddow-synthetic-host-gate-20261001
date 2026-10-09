@@ -32,6 +32,22 @@ export PATH="$HOME/.local/bin:$PATH"
 timeout 480 uv tool install openhands --python 3.12 >"$WORK/install.log" 2>&1 || { echo "OPENHANDS_CLI_INSTALL_FAILED";tail -n 14 "$WORK/install.log"|cut -c1-140;exit 3; }
 command -v openhands >/dev/null
 echo "ANGELS_OPENHANDS_CLI_INSTALLED"
+# Generate official default AgentSpec with explicit non-thinking LLM capabilities.
+"$HOME/.local/share/uv/tools/openhands/bin/python" - <<'PY'
+from openhands.sdk import LLM
+from openhands_cli.utils import get_default_cli_agent
+from openhands_cli.locations import get_persistence_dir
+from pathlib import Path
+llm=LLM(model="ollama_chat/qwen2.5-coder:3b",api_key="local-synthetic-model-no-account-key",base_url="http://127.0.0.1:11434",usage_id="agent",reasoning_effort="none",capability_overrides={"supports_reasoning_effort":False,"thinking_mode":"none"})
+agent=get_default_cli_agent(llm)
+p=Path(get_persistence_dir())/"agent_settings.json"
+p.parent.mkdir(parents=True,exist_ok=True)
+p.write_text(agent.model_dump_json())
+verified=__import__("openhands.sdk",fromlist=["Agent"]).Agent.model_validate_json(p.read_text())
+assert verified.llm.reasoning_effort=="none"
+assert verified.llm.capability_overrides.get("thinking_mode")=="none"
+print("ANGELS_OPENHANDS_NONTHINKING_CONFIG_VERIFIED")
+PY
 export OPENHANDS_SUPPRESS_BANNER=1
 export LLM_MODEL='ollama_chat/qwen2.5-coder:3b'
 export LLM_API_KEY='local-synthetic-model-no-account-key'
