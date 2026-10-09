@@ -15,6 +15,9 @@ on:
     # This never enrolls with or receives production authority from ANGELS.
     - cron: '47 * * * *'
   workflow_dispatch:
+  issues:
+    # Owner-created exact work orders only. No arbitrary public issue body is a prompt.
+    types: [opened]
 permissions:
   contents: read
 concurrency:
@@ -22,7 +25,12 @@ concurrency:
   cancel-in-progress: false
 jobs:
   real-llm-coding:
-    if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+    if: >-
+      github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001' &&
+      (github.event_name != 'issues' ||
+       (github.event.issue.user.login == 'visionastro48-dev' &&
+        github.event.issue.title == 'ANGELS FORGE TASK: no-authority gate verifier' &&
+        github.event.issue.body == 'mission_id=ANGELS-FORGE-GATE-001'))
     runs-on: ubuntu-latest
     timeout-minutes: 22
     steps:
