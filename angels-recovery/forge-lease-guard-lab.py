@@ -10,7 +10,7 @@ from pathlib import Path
 
 MODEL="qwen3:4b-instruct"
 ENDPOINT="http://127.0.0.1:11434/api/chat"
-MAX_ATTEMPTS=4
+MAX_ATTEMPTS=1
 CONTRACT={"mission_id":"FORGE-LEASE-002","writer_id":"foundation-worker-1",
           "claim_epoch":7,"external_effects_allowed":False,"nonce":"0123456789abcdef"}
 TASK=(
@@ -181,6 +181,7 @@ def main():
     {"role":"system","content":"You are a coding repair agent. You must call the actual write_lease_code tool. No textual imitation."},
     {"role":"user","content":TASK+"\nYour previous attempt failed these independent tests: "+json.dumps(problems[:7])+"\nRevalidate all 18 cases including unexpected keys, bool epoch, invalid nonce, and extra arguments. The only valid keys are mission_id, writer_id, claim_epoch, external_effects_allowed, nonce. Source was:\n"+content[:3500]+"\nCall write_lease_code again with repaired full source."}
    ]
+ emit("SECOND_MISSION_REJECTED_SOURCE_DIAGNOSTIC", candidate_source=content[:6000], failing_cases=problems, attempt=attempt)
  raise RuntimeError("REAL_AGENT_COULD_NOT_PASS_INDEPENDENT_TESTS")
 
 if __name__=="__main__":
