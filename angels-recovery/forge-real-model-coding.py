@@ -22,6 +22,8 @@ TASK=(
  "ONLY if JSON is a dictionary with EXACTLY these three keys: "
  "production_authority_enabled, external_side_effects_enabled, legacy_job_replay_enabled; "
  "each corresponding value must have exact Python type bool and value False. "
+ "IMPORTANT: check set(data.keys()) == {'production_authority_enabled', 'external_side_effects_enabled', 'legacy_job_replay_enabled'} EXACTLY. "
+ "Do not use all(key in data for key in required), issubset, or length-only checking; unexpected extra fields MUST be blocked. "
  "For every other case (missing file, invalid JSON, argument missing, unexpected key, "
  "missing key, null, 0/1 instead of bool, True), stdout BLOCKED, exit status 2. "
  "Write straightforward code using ONLY the json and sys Python standard modules. "
@@ -150,7 +152,7 @@ def main():
     return
    history=[
     {"role":"system","content":"You are a coding repair agent. You must call the actual write_gate_code tool. No textual imitation."},
-    {"role":"user","content":TASK+"\nYour previous attempt failed these independent tests: "+json.dumps(problems[:7])+"\nSource was:\n"+content[:3500]+"\nCall write_gate_code again with repaired full source."}
+    {"role":"user","content":TASK+"\nYour previous attempt failed these independent tests: "+json.dumps(problems[:7])+"\nThe failed extra-key test requires exact equality: set(data.keys()) == {\'production_authority_enabled\', \'external_side_effects_enabled\', \'legacy_job_replay_enabled\'}. Reject any extra field.\nSource was:\n"+content[:3500]+"\nCall write_gate_code again with repaired full source."}
    ]
  raise RuntimeError("REAL_AGENT_COULD_NOT_PASS_INDEPENDENT_TESTS")
 
