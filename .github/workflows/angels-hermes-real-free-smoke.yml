@@ -56,7 +56,7 @@ jobs:
           # Temporary loopback relay: Kilo accepts the verified free model without a token,
           # but Hermes sends a placeholder Authorization header that Kilo rejects.
           curl -fsSL --retry 2 --connect-timeout 10 \
-            https://raw.githubusercontent.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/d63ec0fc7f4f7e32ae6445a285155e1484a2e3c2/angels-recovery/hermes-free-noauth-proxy.py \
+            https://raw.githubusercontent.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/54c5f675a924b5a6229b82f72d0c87bb7bd6a352/angels-recovery/hermes-free-noauth-proxy.py \
             -o "$RUNNER_TEMP/hermes-free-proxy.py"
           python3 -u "$RUNNER_TEMP/hermes-free-proxy.py" > "$RUNNER_TEMP/hermes-proxy.log" 2>&1 &
           proxy_pid=$!
