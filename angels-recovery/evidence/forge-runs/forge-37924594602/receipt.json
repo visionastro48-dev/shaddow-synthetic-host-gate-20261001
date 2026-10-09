@@ -1,0 +1,18 @@
+{
+  "artifacts_sha256_checked": true,
+  "continuous_workforce_certified": false,
+  "gateway_enrolled": false,
+  "generation_attempts": 1,
+  "model": "qwen3:4b-instruct",
+  "no_production_authority": true,
+  "schema": "angels.forge.durable-acceptance/v1",
+  "source_sha256": "f4f882d7bf11c8b627c1de5ac2bca277bd8550c1f18dc3d8b00eeba3e0623463",
+  "structured_tool_call": true,
+  "verified_synthetic_cases": 11,
+  "warning": "Source verified as data; source never executed in the privileged receipt-publisher job. No scheduled-cadence or Gateway certification implied.",
+  "workflow_event": "push",
+  "workflow_run_attempt": 1,
+  "workflow_run_id": 37924594602,
+  "workflow_run_url": "https://github.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/actions/runs/37924594602",
+  "workflow_source_sha": "449cc0335e48024dd9734f2518760c3364661587"
+}
