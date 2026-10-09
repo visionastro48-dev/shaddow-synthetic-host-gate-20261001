@@ -37,8 +37,7 @@ class WitnessTests(unittest.TestCase):
 
     def test_two_distinct_scheduled_cycles_with_independent_receipts(self):
         import base64
-        from unittest.mock import patch
-        runs = [{**RUN, "id": 101}, {**RUN, "id": 102}]
+        runs = [{**RUN, "id": 101, "created_at": datetime.now(timezone.utc).isoformat()}, {**RUN, "id": 102, "created_at": datetime.now(timezone.utc).isoformat()}]
         def fake_fetch(url):
             if "/runs?event=schedule" in url:
                 return {"workflow_runs": runs}
@@ -50,9 +49,7 @@ class WitnessTests(unittest.TestCase):
             if url.endswith("/gate_verify.py"):
                 return {"content": base64.b64encode(SOURCE).decode()}
             raise AssertionError(url)
-        with patch("forge_recurring_witness.datetime") as clock:
-            clock.now.return_value = NOW
-            result = witness(fetch=fake_fetch)
+        result = witness(fetch=fake_fetch)
         self.assertEqual(result["verified_run_ids"], [101,102])
         self.assertEqual(result["two_cycle_gate"], "PASS_BOUNDED_ONLY")
         self.assertFalse(result["always_on_worker_certified"])
