@@ -1,8 +1,8 @@
 # Public, credential-free observer only. Never interpret HTTP health as ANGELS authority.
-name: ANGELS Foundation 30m Readonly Monitor
+name: ANGELS Foundation Hourly Readonly Monitor
 on:
   schedule:
-    - cron: '7,37 * * * *'
+    - cron: '7 * * * *'
   workflow_dispatch:
   push:
     branches: [main]
@@ -14,7 +14,7 @@ permissions:
   contents: read
   issues: write
 concurrency:
-  group: angels-foundation-30m-readonly-observer
+  group: angels-foundation-hourly-readonly-observer
   cancel-in-progress: false
 jobs:
   observe-only:
