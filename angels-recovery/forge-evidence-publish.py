@@ -91,6 +91,21 @@ def publish(artifact_dir, repo_root, run_id, run_attempt, event, head_sha):
     }
     root = Path(repo_root)
     target = root / "angels-recovery" / "evidence" / "forge-runs" / ("forge-" + run_id)
+    # GitHub increases RUN_ATTEMPT when a job is retried; preserve the FIRST
+    # accepted receipt rather than rewriting it or generating a false conflict.
+    # All source, event, scope, and hash fields are still compared below.
+    prior_file = target / "receipt.json"
+    if prior_file.is_symlink():
+        fail("symlink_output")
+    if prior_file.exists():
+        try:
+            previous = json.loads(regular_file(prior_file, 10000))
+        except (ValueError, UnicodeError):
+            fail("malformed_previous_receipt")
+        first_attempt = previous.get("workflow_run_attempt") if isinstance(previous, dict) else None
+        if type(first_attempt) is not int or not 1 <= first_attempt <= int(run_attempt):
+            fail("invalid_existing_attempt")
+        record["workflow_run_attempt"] = first_attempt
     payloads = {
         target / "gate_verify.py": source,
         target / "receipt.json": (json.dumps(record, sort_keys=True, indent=2) + "\n").encode(),
