@@ -44,7 +44,7 @@ timeout 850 openhands --headless --json --override-with-envs --exit-without-conf
 agent_status=$?
 set -e
 echo "ANGELS_OPENHANDS_AGENT_EXIT=$agent_status"
-test -f "$WORK/gate_verify.py" || { echo "AGENT_DID_NOT_CREATE_FILE";grep -E -i 'error|fail|warning|LLM|model|provider|tool|conversation|backend|exception|invalid|timeout' "$WORK/agent.log" | tail -n 28 | cut -c1-210 || true;exit 4; }
+test -f "$WORK/gate_verify.py" || { echo "AGENT_DID_NOT_CREATE_FILE";sed -n '1,100p' "$WORK/agent.log" | cut -c1-200 || true;exit 4; }
 python3 - <<'PY'
 import json,pathlib,subprocess,sys,hashlib
 root=pathlib.Path.cwd()
