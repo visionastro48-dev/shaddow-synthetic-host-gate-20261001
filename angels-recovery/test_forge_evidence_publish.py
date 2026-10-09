@@ -57,6 +57,8 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual((target / "gate_verify.py").read_bytes(), SOURCE)
         self.assertTrue(json.loads(first)["no_production_authority"])
         self.assertEqual(self.do_publish(), target)
+        # Same evidence on a subsequent GitHub Actions run attempt is a no-op.
+        self.assertEqual(self.do_publish(run_attempt="2"), target)
         self.assertEqual((target / "receipt.json").read_bytes(), first)
 
     def test_tampered_source_is_rejected(self):
@@ -83,6 +85,10 @@ class PublisherTests(unittest.TestCase):
 
     def test_conflicting_replay_is_rejected(self):
         self.do_publish()
+        changed = SOURCE + b"# competing source\\n"
+        (self.artifact / "gate_verify.py").write_bytes(changed)
+        self.data["source_sha256"] = hashlib.sha256(changed).hexdigest()
+        self.write_receipt()
         with self.assertRaisesRegex(ValueError, "conflicting_replay"):
             self.do_publish(run_attempt="2")
 
