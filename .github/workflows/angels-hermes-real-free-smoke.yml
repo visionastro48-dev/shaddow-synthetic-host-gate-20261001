@@ -1,13 +1,13 @@
 # One-shot, synthetic Hermes Agent verification. Public runner, no ANGELS secrets or authority.
 # No scheduled repeat and no deployments. All computation remains on disposable runner.
-name: ANGELS Hermes Real Free Inference Smoke
+name: ANGELS Hermes Independent Artifact Gate
 on:
   push:
-    branches: [lab/hermes-free-model-20261009]
+    branches: [lab/hermes-independent-artifact-20261009]
     paths: [.github/workflows/angels-hermes-real-free-smoke.yml]
 permissions: {}
 concurrency:
-  group: angels-hermes-real-free-smoke
+  group: angels-hermes-independent-artifact
   cancel-in-progress: false
 
 jobs:
@@ -70,12 +70,12 @@ jobs:
           echo 'CREDENTIALLESS_FREE_PROXY_LISTENING_LOCALHOST=true'
           mkdir -p "$HERMES_HOME" "$RUNNER_TEMP/hermes-workspace"
           chmod 700 "$HERMES_HOME"
-          printf '%s\n'             'model:'             '  default: "cohere/north-mini-code:free"'             '  provider: custom'             '  base_url: "http://127.0.0.1:8765/v1"'             '  api_key: ""'             'fallback_providers: []'             'terminal:'             '  backend: local'             > "$HERMES_HOME/config.yaml"
+          printf '%s\n'             'model:'             '  default: "nvidia/nemotron-3.5-lightning:free"'             '  provider: custom'             '  base_url: "http://127.0.0.1:8765/v1"'             '  api_key: ""'             'fallback_providers: []'             'terminal:'             '  backend: local'             > "$HERMES_HOME/config.yaml"
           chmod 600 "$HERMES_HOME/config.yaml"
           printf '%s\n'             'You are a disposable coding worker with no production credentials, no business authority, and no ability to deploy.'             'Use your file or terminal tools to create ONLY hello.txt in the current working directory.'             'Its exact content must be ANGELS_HERMES_REAL_OK followed by a newline.'             'Read the file back before finishing. Do not access or change anything outside this disposable work folder.'             > "$RUNNER_TEMP/hermes-task.txt"
           cd "$RUNNER_TEMP/hermes-workspace"
           set +e
-          timeout 170 hermes chat --oneshot --quiet --toolsets "terminal,file" --max-turns 8 --provider custom --model "cohere/north-mini-code:free" --query-file "$RUNNER_TEMP/hermes-task.txt" > "$RUNNER_TEMP/hermes-log.txt" 2>&1
+          timeout 170 hermes chat --oneshot --quiet --toolsets "terminal,file" --max-turns 8 --provider custom --model "nvidia/nemotron-3.5-lightning:free" --query-file "$RUNNER_TEMP/hermes-task.txt" > "$RUNNER_TEMP/hermes-log.txt" 2>&1
           result=$?
           set -e
           echo "HERMES_EXIT_STATUS=$result"
