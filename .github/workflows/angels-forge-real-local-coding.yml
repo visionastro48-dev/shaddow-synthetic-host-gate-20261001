@@ -59,3 +59,60 @@ jobs:
       - name: Dispose local model and runtime
         if: always()
         run: docker rm -f angels-forge-ollama >/dev/null 2>&1 || true
+
+  # Separate short-lived identity: model process never receives write credentials.
+  # Only after the unprivileged model job passes may this job verify and commit DATA.
+  receipt-publisher:
+    needs: real-llm-coding
+    if: ${{ needs.real-llm-coding.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout trusted synthetic repository (no production material)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Download accepted model output AS DATA, never execute model source
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0, pinned
+        with:
+          name: angels-forge-accepted
+          path: forge-received
+      - name: Regression-test durable publisher on synthetic fixtures
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s angels-recovery -p 'test_forge_evidence_publish.py' -v
+      - name: Validate artifact and prepare immutable, idempotent evidence files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+          python3 angels-recovery/forge-evidence-publish.py \
+            --artifact "$GITHUB_WORKSPACE/forge-received" --repo "$GITHUB_WORKSPACE" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --event "$GITHUB_EVENT_NAME" --sha "$GITHUB_SHA"
+      - name: Persist bounded synthetic receipt and source without token exposure to model
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'angels-forge-evidence'
+          git config user.email 'angels-forge-evidence@users.noreply.github.com'
+          git add "angels-recovery/evidence/forge-runs/forge-${GITHUB_RUN_ID}/gate_verify.py" \
+                  "angels-recovery/evidence/forge-runs/forge-${GITHUB_RUN_ID}/receipt.json"
+          if git diff --cached --quiet; then
+            echo 'FORGE_DURABLE_GIT_RECEIPT=IDEMPOTENT_EXISTING'
+            exit 0
+          fi
+          git commit -m "Preserve verified synthetic FORGE run ${GITHUB_RUN_ID}"
+          for attempt in 1 2 3 4; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then
+              echo "FORGE_DURABLE_GIT_RECEIPT=PERSISTED run_id=${GITHUB_RUN_ID} commit=$(git rev-parse HEAD)"
+              exit 0
+            fi
+            sleep "$((attempt * 3))"
+          done
+          echo 'FORGE_DURABLE_GIT_RECEIPT=FAILED_NO_FORCE_PUSH' >&2
+          exit 1
