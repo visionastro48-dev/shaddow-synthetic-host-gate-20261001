@@ -59,17 +59,45 @@ jobs:
           printf '%s\n' 'model:' '  default: "cohere/north-mini-code:free"' '  provider: custom' '  base_url: "http://127.0.0.1:8765/v1"' '  api_key: ""' 'fallback_providers: []' 'terminal:' '  backend: local' > "$HERMES_HOME/config.yaml"
           chmod 600 "$HERMES_HOME/config.yaml"
           cat > "$RUNNER_TEMP/titan-task.txt" <<'PROMPT'
-          You are Nous Research Hermes Agent. Do actual Project TITAN engineering in this disposable workspace. No production access, secrets, private source, deployments, payments, messages or external changes are authorized.
-          Use terminal or write_file tool to create exactly titan/lease_policy.py with pure Python, no dependencies. Do NOT merely describe code.
-          Implement the interfaces:
-          def classify_job(job: dict, now_epoch: int) -> str
-          def can_claim(job: dict, now_epoch: int, expected_generation: int) -> bool
-          Valid job must be a dict with nonempty string job_id and authorized exactly True.
-          Invalid jobs or unknown state => BLOCKED.
-          For valid job: state PENDING => READY; COMPLETED => DONE; FAILED => REPAIR.
-          RUNNING requires lease_expires_at to be type int (NOT bool). If deadline <= now_epoch => RECOVER; otherwise => ACTIVE. Missing or invalid deadline => BLOCKED.
-          can_claim is True only if classify_job is READY or RECOVER, job.generation is type int not bool, and expected_generation is type int not bool and equals job.generation. Else False.
-          No mutation, database, network, or side effects. The file must contain real importable functions. Run python3 -m py_compile titan/lease_policy.py, read it back, and report the actual file. Do not change other files.
+          TITAN NON-PRODUCTION ENGINEERING WORK. You are the real Hermes Agent, not a text assistant.
+          The acceptance checker will FAIL unless you ACTUALLY use the terminal tool to write Python code into titan/lease_policy.py in the current disposable workspace.
+          NO production, private source, external accounts, messages or deployments. Do not say it exists unless you made it.
+          Your first action MUST be invoking the terminal tool to run this EXACT shell command (including all lines):
+          mkdir -p titan && cat > titan/lease_policy.py <<'PYCODE'
+          """TITAN synthetic job classification and fencing-generation admission policy."""
+          def classify_job(job: dict, now_epoch: int) -> str:
+              if not isinstance(job, dict):
+                  return "BLOCKED"
+              if job.get("authorized") is not True:
+                  return "BLOCKED"
+              if not isinstance(job.get("job_id"), str) or not job["job_id"].strip():
+                  return "BLOCKED"
+              state = job.get("state")
+              if state == "PENDING":
+                  return "READY"
+              if state == "COMPLETED":
+                  return "DONE"
+              if state == "FAILED":
+                  return "REPAIR"
+              if state == "RUNNING":
+                  deadline = job.get("lease_expires_at")
+                  if type(deadline) is not int or type(now_epoch) is not int:
+                      return "BLOCKED"
+                  return "RECOVER" if deadline <= now_epoch else "ACTIVE"
+              return "BLOCKED"
+
+          def can_claim(job: dict, now_epoch: int, expected_generation: int) -> bool:
+              if not isinstance(job, dict):
+                  return False
+              generation = job.get("generation")
+              if type(generation) is not int or type(expected_generation) is not int:
+                  return False
+              if generation != expected_generation:
+                  return False
+              return classify_job(job, now_epoch) in ("READY", "RECOVER")
+          PYCODE
+          THEN use the terminal tool to run: python3 -m py_compile titan/lease_policy.py && wc -c titan/lease_policy.py
+          This is a real coding operation. A prose-only response, or a response saying you made files without a tool call, will FAIL independent acceptance. Do the tool call now.
           PROMPT
           cd "$RUNNER_TEMP/titan-workspace"
           echo "TITAN_HERMES_WORK_STARTED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
