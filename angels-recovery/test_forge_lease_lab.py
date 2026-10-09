@@ -61,6 +61,24 @@ class IndependentLeaseTests(unittest.TestCase):
             self.assertLess(passed,total)
             self.assertTrue(any("epoch_bool" in item for item in issues),issues)
 
+    def test_bounded_bool_repair_still_passes_all_original_18_cases(self):
+        weak=REFERENCE.replace('type(d["claim_epoch"]) is not int',
+                               'not isinstance(d["claim_epoch"],int)')
+        self.assertNotEqual(weak,REFERENCE)
+        with tempfile.TemporaryDirectory() as td:
+            candidate=Path(td)/"lease_verify.py"
+            candidate.write_text(weak)
+            self.assertTrue(any("epoch_bool" in x for x in lab.assess(candidate,Path(td))[2]))
+            fixed=lab.repair_exact_int_bool_confusion(weak)
+            self.assertIsNotNone(fixed)
+            self.assertIn("type(",fixed)
+            candidate.write_text(fixed)
+            passed,total,issues=lab.assess(candidate,Path(td))
+            self.assertEqual((passed,total,issues),(18,18,[]))
+
+    def test_bounded_repair_does_not_modify_exact_type_source(self):
+        self.assertIsNone(lab.repair_exact_int_bool_confusion(REFERENCE))
+
     def test_extra_keys_fail_closed(self):
         weak=REFERENCE.replace('set(d.keys()) != REQUIRED','not REQUIRED.issubset(set(d.keys()))')
         self.assertNotEqual(weak,REFERENCE)
