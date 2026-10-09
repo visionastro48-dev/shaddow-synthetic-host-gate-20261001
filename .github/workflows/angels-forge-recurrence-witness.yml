@@ -1,5 +1,10 @@
 name: ANGELS FORGE Readonly Recurrence Witness
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'angels-recovery/forge_recurring_witness.py'
+      - '.github/workflows/angels-forge-recurrence-witness.yml'
   workflow_dispatch:
   schedule:
     - cron: '58 * * * *'
