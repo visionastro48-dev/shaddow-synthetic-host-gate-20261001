@@ -110,6 +110,32 @@ class PublisherTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "conflicting_replay"):
             self.do_publish(run_attempt="2")
 
+    def test_exact_owner_issue_mission_is_preserved(self):
+        self.data["issued_github_mission"] = {
+            "mission_id": "ANGELS-FORGE-GATE-001",
+            "github_issue_number": 77,
+            "issuer": "github-repository-owner",
+            "angels_gateway_authorized": False,
+        }
+        self.write_receipt()
+        target = self.do_publish(event="issues")
+        record = json.loads((target / "receipt.json").read_text())
+        self.assertEqual(record["issued_github_mission"]["github_issue_number"], 77)
+        self.assertFalse(record["gateway_enrolled"])
+
+    def test_public_untrusted_issue_mission_is_blocked(self):
+        self.data["issued_github_mission"] = {
+            "mission_id": "ANGELS-FORGE-GATE-001",
+            "github_issue_number": 77,
+            "issuer": "outsider",
+            "angels_gateway_authorized": False,
+        }
+        self.write_receipt()
+        with self.assertRaisesRegex(ValueError, "untrusted_issue_mission_receipt"):
+            self.do_publish(event="issues")
+        with self.assertRaisesRegex(ValueError, "unexpected_issue_mission_on_nonissue_run"):
+            self.do_publish(event="push")
+
     def test_invalid_identity_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "invalid_run_id"):
             self.do_publish(run_id="../broken")
