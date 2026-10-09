@@ -93,11 +93,33 @@ def assess(file,root):
   except Exception as exc:problems.append(label+":"+type(exc).__name__)
  return len(cases)+2-len(problems),len(cases)+2,problems
 
+def issued_mission():
+ """Accept ONLY one explicit bounded owner-issued GitHub issue; never arbitrary issue prompts."""
+ if os.environ.get("GITHUB_EVENT_NAME") != "issues":
+  return None
+ event_file = os.environ.get("GITHUB_EVENT_PATH")
+ if not event_file: raise RuntimeError("MISSING_SIGNED_GITHUB_EVENT")
+ data=json.loads(Path(event_file).read_text())
+ issue=data.get("issue") or {}
+ if (data.get("action")!="opened" or
+     (data.get("repository") or {}).get("full_name")!="visionastro48-dev/shaddow-synthetic-host-gate-20261001" or
+     (issue.get("user") or {}).get("login")!="visionastro48-dev" or
+     issue.get("title")!="ANGELS FORGE TASK: no-authority gate verifier" or
+     (issue.get("body") or "").strip()!="mission_id=ANGELS-FORGE-GATE-001" or
+     type(issue.get("number")) is not int):
+  raise RuntimeError("MISSION_NOT_AUTHORIZED_FOR_SYNTHETIC_CARRIER")
+ return {"mission_id":"ANGELS-FORGE-GATE-001",
+         "github_issue_number":issue["number"],
+         "issuer":"github-repository-owner",
+         "angels_gateway_authorized":False}
+
 def main():
  if os.environ.get("GITHUB_REPOSITORY")!="visionastro48-dev/shaddow-synthetic-host-gate-20261001":
   raise RuntimeError("UNAUTHORIZED_REPOSITORY")
  for secret in ("ANGELS_GATEWAY_URL","ANGELS_MODULE_TOKEN","OPENROUTER_API_KEY","OPENAI_API_KEY","ANTHROPIC_API_KEY"):
   if os.environ.get(secret):raise RuntimeError("FORBIDDEN_SECRET_IN_SYNTHETIC_RUNNER")
+ mission=issued_mission()
+ if mission: emit("BOUNDED_OWNER_ISSUED_MISSION_ACCEPTED",**mission)
  with tempfile.TemporaryDirectory(prefix="angels-forge-model-") as tmp:
   root=Path(tmp).resolve()
   history=[
@@ -141,6 +163,7 @@ def main():
              "independent_tests_passed":total,"independent_tests_total":total,
              "authority":"none","legacy_data_mounted":False,"gateway_enrolled":False,
              "continuous_workforce_certified":False}
+    if mission:receipt["issued_github_mission"]=mission
     # Retain only synthetic, independently verified output outside the disposable workdir.
     export = Path(os.environ.get("GITHUB_WORKSPACE", str(root))) / "forge-accepted-output"
     export.mkdir(parents=True, exist_ok=True, mode=0o700)
