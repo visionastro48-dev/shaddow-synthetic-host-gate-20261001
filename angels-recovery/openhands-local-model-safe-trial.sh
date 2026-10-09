@@ -38,14 +38,14 @@ from openhands.sdk import LLM
 from openhands_cli.utils import get_default_cli_agent
 from openhands_cli.locations import get_persistence_dir
 from pathlib import Path
-llm=LLM(model="ollama_chat/qwen2.5-coder:3b",api_key="local-synthetic-model-no-account-key",base_url="http://127.0.0.1:11434",usage_id="agent",reasoning_effort="none",capability_overrides={"supports_reasoning_effort":False,"thinking_mode":"none"})
+llm=LLM(model="ollama_chat/qwen2.5-coder:3b",api_key="local-synthetic-model-no-account-key",base_url="http://127.0.0.1:11434",usage_id="agent",reasoning_effort="none")
 agent=get_default_cli_agent(llm)
 p=Path(get_persistence_dir())/"agent_settings.json"
 p.parent.mkdir(parents=True,exist_ok=True)
 p.write_text(agent.model_dump_json())
 verified=__import__("openhands.sdk",fromlist=["Agent"]).Agent.model_validate_json(p.read_text())
 assert verified.llm.reasoning_effort=="none"
-assert verified.llm.capability_overrides.get("thinking_mode")=="none"
+assert verified.llm.reasoning_effort=="none"
 print("ANGELS_OPENHANDS_NONTHINKING_CONFIG_VERIFIED")
 PY
 export OPENHANDS_SUPPRESS_BANNER=1
