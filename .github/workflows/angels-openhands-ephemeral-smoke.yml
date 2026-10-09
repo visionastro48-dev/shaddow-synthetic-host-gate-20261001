@@ -1,0 +1,48 @@
+name: ANGELS OpenHands Ephemeral No-Authority Startup Smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/angels-openhands-ephemeral-smoke.yml'
+permissions:
+  contents: read
+concurrency:
+  group: angels-openhands-ephemeral-smoke
+  cancel-in-progress: false
+jobs:
+  single-isolated-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - name: Checkout public smoke launcher only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Confirm disposable host and Docker are usable
+        run: |
+          test -f /etc/os-release
+          docker version --format '{{.Server.Version}}'
+          grep -E '^PRETTY_NAME=' /etc/os-release
+      - name: Launch OpenHands in an isolated temporary cloud-runner container
+        run: sudo bash angels-recovery/openhands-bootstrap-smoke.sh
+      - name: Probe local-only OpenHands process without model or production credentials
+        run: |
+          ok=0
+          for i in $(seq 1 35); do
+            if sudo bash angels-recovery/openhands-verify-smoke.sh; then
+              ok=1
+              break
+            fi
+            sleep 10
+          done
+          if [ "$ok" -ne 1 ]; then echo 'OPENHANDS_NOT_VERIFIED'; exit 1; fi
+          echo 'OPENHANDS_EPHEMERAL_LOCAL_RUNTIME_VERIFIED'
+          echo 'ANGELS_BOYS_STARTED=false'
+          echo 'MODEL_INFERENCE_VERIFIED=false'
+          echo 'PERSISTENT_DIGITALOCEAN_DEPLOYMENT=false'
+      - name: Clean ephemeral synthetic workspace
+        if: always()
+        run: |
+          sudo docker rm --force angels-openhands-isolated >/dev/null 2>&1 || true
+          sudo rm -rf /srv/angels-foundation-v1
