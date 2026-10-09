@@ -61,6 +61,24 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(self.do_publish(run_attempt="2"), target)
         self.assertEqual((target / "receipt.json").read_bytes(), first)
 
+    def test_second_publisher_same_run_matches_exact_bytes(self):
+        # Simulate a competing publisher that has already committed the receipt.
+        first = self.do_publish()
+        original_receipt = (first / "receipt.json").read_bytes()
+        original_source = (first / "gate_verify.py").read_bytes()
+        self.assertEqual(self.do_publish(run_attempt="2"), first)
+        self.assertEqual((first / "receipt.json").read_bytes(), original_receipt)
+        self.assertEqual((first / "gate_verify.py").read_bytes(), original_source)
+
+    def test_second_publisher_conflicting_receipt_rejected(self):
+        first = self.do_publish()
+        receipt = first / "receipt.json"
+        record = json.loads(receipt.read_text())
+        record["source_sha256"] = "0" * 64
+        receipt.write_text(json.dumps(record))
+        with self.assertRaisesRegex(ValueError, "conflicting_replay_receipt.json"):
+            self.do_publish(run_attempt="2")
+
     def test_tampered_source_is_rejected(self):
         (self.artifact / "gate_verify.py").write_bytes(b"changed")
         with self.assertRaisesRegex(ValueError, "source_digest_mismatch"):
