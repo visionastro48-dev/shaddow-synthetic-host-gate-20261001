@@ -29,16 +29,16 @@ jobs:
           echo 'NO_STATIC_AWS_CREDENTIALS_USED=true'
   aws-ssm-fixed-readonly:
     needs: verify-readiness
-    if: ${{ vars.ANGELS_AWS_READONLY_ROLE_ARN != '' && vars.ANGELS_EXISTING_AWS_INSTANCE_ID != '' && vars.ANGELS_READONLY_SSM_DOCUMENT != '' }
+    if: ${{ vars.ANGELS_AWS_READONLY_ROLE_ARN != '' && vars.ANGELS_EXISTING_AWS_INSTANCE_ID != '' && vars.ANGELS_READONLY_SSM_DOCUMENT != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 6
     permissions:
       contents: read
       id-token: write
     env:
-      AWS_ROLE_ARN: ${{ vars.ANGELS_AWS_READONLY_ROLE_ARN }
-      ANGELS_EXISTING_AWS_INSTANCE_ID: ${{ vars.ANGELS_EXISTING_AWS_INSTANCE_ID }
-      ANGELS_READONLY_SSM_DOCUMENT: ${{ vars.ANGELS_READONLY_SSM_DOCUMENT }
+      AWS_ROLE_ARN: ${{ vars.ANGELS_AWS_READONLY_ROLE_ARN }}
+      ANGELS_EXISTING_AWS_INSTANCE_ID: ${{ vars.ANGELS_EXISTING_AWS_INSTANCE_ID }}
+      ANGELS_READONLY_SSM_DOCUMENT: ${{ vars.ANGELS_READONLY_SSM_DOCUMENT }}
       AWS_REGION: eu-north-1
       AWS_DEFAULT_REGION: eu-north-1
       AWS_PAGER: ''
