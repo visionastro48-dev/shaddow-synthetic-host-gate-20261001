@@ -31,7 +31,7 @@ def publish(artifact_dir, repo_root, run_id, run_attempt, event, head_sha):
         fail("invalid_run_id")
     if not re.fullmatch(r"[1-9][0-9]{0,3}", str(run_attempt)):
         fail("invalid_attempt")
-    if event not in {"push", "schedule", "workflow_dispatch"}:
+    if event not in {"push", "schedule", "workflow_dispatch", "issues"}:
         fail("unsupported_event")
     if not re.fullmatch(r"[a-f0-9]{40}", str(head_sha)):
         fail("invalid_head_sha")
@@ -67,6 +67,19 @@ def publish(artifact_dir, repo_root, run_id, run_attempt, event, head_sha):
             fail("acceptance_tests_" + key)
     if type(acceptance.get("attempts")) is not int or not 1 <= acceptance["attempts"] <= 4:
         fail("attempt_bounds")
+    # A GitHub issue may launch this exact synthetic mission only; the witness
+    # expressly does not imply authenticated ANGELS Gateway enrollment.
+    owner_mission = acceptance.get("issued_github_mission")
+    if event == "issues":
+        if (not isinstance(owner_mission, dict) or
+            owner_mission.get("mission_id") != "ANGELS-FORGE-GATE-001" or
+            owner_mission.get("issuer") != "github-repository-owner" or
+            owner_mission.get("angels_gateway_authorized") is not False or
+            type(owner_mission.get("github_issue_number")) is not int or
+            owner_mission["github_issue_number"] < 1):
+            fail("untrusted_issue_mission_receipt")
+    elif owner_mission is not None:
+        fail("unexpected_issue_mission_on_nonissue_run")
     digest = hashlib.sha256(source).hexdigest()
     if acceptance.get("source_sha256") != digest:
         fail("source_digest_mismatch")
@@ -77,6 +90,7 @@ def publish(artifact_dir, repo_root, run_id, run_attempt, event, head_sha):
         "workflow_run_attempt": int(run_attempt),
         "workflow_run_url": f"https://github.com/{REPO}/actions/runs/{run_id}",
         "workflow_event": event,
+        "issued_github_mission": owner_mission,
         "workflow_source_sha": head_sha,
         "source_sha256": digest,
         "model": acceptance["model"],
