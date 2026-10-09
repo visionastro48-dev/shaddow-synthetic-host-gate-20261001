@@ -41,7 +41,7 @@ class WitnessTests(unittest.TestCase):
         def fake_fetch(url):
             if "/runs?event=schedule" in url:
                 return {"workflow_runs": runs}
-            rid = int(url.split("forge-")[1].split("/")[0])
+            rid = int(url.rsplit("/forge-",1)[1].split("/")[0])
             if url.endswith("/receipt.json"):
                 receipt = {**RECEIPT, "workflow_run_id": rid,
                            "workflow_run_url": "https://github.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/actions/runs/" + str(rid)}
@@ -61,7 +61,7 @@ class WitnessTests(unittest.TestCase):
         def fake_fetch(url):
             if "/runs?event=schedule" in url:
                 return {"workflow_runs": runs}
-            rid = int(url.split("forge-")[1].split("/")[0])
+            rid = int(url.rsplit("/forge-",1)[1].split("/")[0])
             if url.endswith("/receipt.json"):
                 receipt = {**RECEIPT, "workflow_run_id": rid,
                            "workflow_run_url": "https://github.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/actions/runs/" + str(rid)}
