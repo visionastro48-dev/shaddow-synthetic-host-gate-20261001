@@ -1,0 +1,82 @@
+# One-shot, synthetic Hermes Agent verification. Public runner, no ANGELS secrets or authority.
+# No scheduled repeat and no deployments. All computation remains on disposable runner.
+name: ANGELS Hermes Real Free Inference Smoke
+on:
+  push:
+    branches: [lab/hermes-free-model-20261009]
+    paths: [.github/workflows/angels-hermes-real-free-smoke.yml]
+permissions: {}
+concurrency:
+  group: angels-hermes-real-free-smoke
+  cancel-in-progress: false
+
+jobs:
+  real-hermes-free-inference:
+    if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Assert no company source and no production authority
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = "visionastro48-dev/shaddow-synthetic-host-gate-20261001"
+          test ! -e .git
+          test ! -e "$HOME/.hermes"
+          test ! -e /srv/angels-foundation-v1
+          echo 'ISOLATED_STANDARD_PUBLIC_RUNNER=true'
+          echo 'PRODUCTION_AUTHORITY=false'
+          echo 'GITHUB_REPOSITORY_SOURCE_CHECKED_OUT=false'
+
+      - name: Install upstream Hermes in disposable runner home
+        shell: bash
+        timeout-minutes: 18
+        run: |
+          set -Eeuo pipefail
+          export HOME="$RUNNER_TEMP/hermes-user"
+          export HERMES_HOME="$HOME/.hermes"
+          mkdir -p "$HOME"
+          curl -fsSL --retry 2 --connect-timeout 15 https://hermes-agent.nousresearch.com/install.sh -o "$RUNNER_TEMP/hermes-install.sh"
+          bash "$RUNNER_TEMP/hermes-install.sh" --non-interactive --skip-browser --skip-computer-use --hermes-home "$HERMES_HOME" --dir "$HERMES_HOME/hermes-agent"
+          export PATH="$HOME/.local/bin:$HERMES_HOME/bin:$PATH"
+          command -v hermes || test -x "$HERMES_HOME/bin/hermes"
+          echo 'OFFICIAL_HERMES_INSTALLED_IN_DISPOSABLE_HOME=true'
+          echo "HERMES_HOME=$HERMES_HOME" >> "$GITHUB_ENV"
+          echo "HOME=$HOME" >> "$GITHUB_ENV"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HERMES_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Execute one bounded real Hermes model and independently verify artifact
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          set -Eeuo pipefail
+          export PATH="$HOME/.local/bin:$HERMES_HOME/bin:$PATH"
+          hermes --help >/dev/null
+          mkdir -p "$HERMES_HOME" "$RUNNER_TEMP/hermes-workspace"
+          chmod 700 "$HERMES_HOME"
+          printf '%s\n'             'model:'             '  default: "cohere/north-mini-code:free"'             '  provider: custom'             '  base_url: "https://api.kilo.ai/api/gateway"'             '  api_key: ""'             'fallback_providers: []'             'terminal:'             '  backend: local'             > "$HERMES_HOME/config.yaml"
+          chmod 600 "$HERMES_HOME/config.yaml"
+          printf '%s\n'             'You are a disposable coding worker with no production credentials, no business authority, and no ability to deploy.'             'Use your file or terminal tools to create ONLY hello.txt in the current working directory.'             'Its exact content must be ANGELS_HERMES_REAL_OK followed by a newline.'             'Read the file back before finishing. Do not access or change anything outside this disposable work folder.'             > "$RUNNER_TEMP/hermes-task.txt"
+          cd "$RUNNER_TEMP/hermes-workspace"
+          set +e
+          timeout 170 hermes chat --oneshot --quiet --toolsets "terminal,file" --max-turns 8 --provider custom --model "cohere/north-mini-code:free" --query-file "$RUNNER_TEMP/hermes-task.txt" > "$RUNNER_TEMP/hermes-log.txt" 2>&1
+          result=$?
+          set -e
+          echo "HERMES_EXIT_STATUS=$result"
+          sed -n '1,100p' "$RUNNER_TEMP/hermes-log.txt"
+          test "$result" -eq 0
+          test -f hello.txt
+          cmp -s hello.txt <(printf 'ANGELS_HERMES_REAL_OK\n')
+          sha256sum hello.txt
+          echo 'REAL_HERMES_CODING_MISSION_ARTIFACT_VERIFIED=true'
+          echo 'NO_ANGELS_GATEWAY_ENROLLMENT=true'
+
+      - name: Retain truth boundary
+        if: always()
+        shell: bash
+        run: |
+          echo 'ONE_SHOT_PUBLIC_RUNNER_ONLY=true'
+          echo 'CONTINUOUS_24X7=false'
+          echo 'ANGELS_PRODUCTION_AUTHORITY=false'
+          echo 'PERMANENT_HERMES_INSTALL=false'
