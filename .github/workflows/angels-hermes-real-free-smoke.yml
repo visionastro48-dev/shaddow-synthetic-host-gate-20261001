@@ -72,7 +72,8 @@ jobs:
           chmod 700 "$HERMES_HOME"
           printf '%s\n'             'model:'             '  default: "cohere/north-mini-code:free"'             '  provider: custom'             '  base_url: "http://127.0.0.1:8765/v1"'             '  api_key: ""'             'fallback_providers: []'             'terminal:'             '  backend: local'             > "$HERMES_HOME/config.yaml"
           chmod 600 "$HERMES_HOME/config.yaml"
-          printf '%s\n'             'You are a disposable coding worker with no production credentials, no business authority, and no ability to deploy.'             'You MUST invoke the terminal or write_file tool to create ONLY hello.txt in the current directory; an answer that only describes file creation is a failure.'             'Its exact content must be ANGELS_HERMES_REAL_OK followed by a newline.'             'Read the file back before finishing. Do not access or change anything outside this disposable work folder.'             > "$RUNNER_TEMP/hermes-task.txt"
+          printf '%s\n'             'You are a disposable coding worker with no production credentials, no business authority, and no ability to deploy.'             'You MUST invoke the terminal or write_file tool to create ONLY hello.txt in the current directory; an answer that only describes file creation is a failure.'             "Use the terminal tool and execute this exact shell command: printf 'ANGELS_HERMES_REAL_OK\\n' > hello.txt" 
+            'Its exact content must be ANGELS_HERMES_REAL_OK followed by one newline. Do not use a descriptive-only response.'             'Read the file back before finishing. Do not access or change anything outside this disposable work folder.'             > "$RUNNER_TEMP/hermes-task.txt"
           cd "$RUNNER_TEMP/hermes-workspace"
           set +e
           timeout 170 hermes chat --oneshot --quiet --toolsets "terminal,file" --max-turns 8 --provider custom --model "cohere/north-mini-code:free" --query-file "$RUNNER_TEMP/hermes-task.txt" > "$RUNNER_TEMP/hermes-log.txt" 2>&1
@@ -86,6 +87,9 @@ jobs:
           test "$result" -eq 0
           grep -q '"event": "FREE_INFERENCE_RECEIPT"' "$RUNNER_TEMP/hermes-proxy.log"
           if [ ! -f hello.txt ]; then echo 'REAL_HERMES_MISSING_ARTIFACT_DESPITE_RESPONSE=true'; exit 1; fi
+          echo "ARTIFACT_BYTE_COUNT=$(wc -c < hello.txt)"
+          sha256sum hello.txt
+          od -An -tx1 hello.txt | head -n 3
           if ! cmp -s hello.txt <(printf 'ANGELS_HERMES_REAL_OK\n'); then echo 'REAL_HERMES_ARTIFACT_CONTENT_MISMATCH=true'; exit 1; fi
           sha256sum hello.txt
           echo 'REAL_HERMES_CODING_MISSION_ARTIFACT_VERIFIED=true'
