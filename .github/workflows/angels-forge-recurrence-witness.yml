@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'angels-recovery/forge_recurring_witness.py'
+      - 'angels-recovery/test_forge_recurring_witness.py'
       - '.github/workflows/angels-forge-recurrence-witness.yml'
   workflow_dispatch:
   schedule:
@@ -25,5 +26,6 @@ jobs:
       - name: Verify scheduled model executions and immutable receipts
         run: |
           set -Eeuo pipefail
+          python3 -m unittest discover -s angels-recovery -p 'test_forge_recurring_witness.py' -v
           python3 -m py_compile angels-recovery/forge_recurring_witness.py
           python3 angels-recovery/forge_recurring_witness.py
