@@ -50,6 +50,8 @@ def validate_cycle(run, receipt, source, now=None):
         for key, value in expected.items():
             if type(receipt.get(key)) is not type(value) or receipt[key] != value:
                 return False, "contract_" + key
+        if receipt.get("workflow_run_url") != "https://github.com/" + REPO + "/actions/runs/" + str(run["id"]):
+            return False, "run_url_mismatch"
         if receipt["source_sha256"] != hashlib.sha256(source).hexdigest():
             return False, "source_hash_mismatch"
         if not isinstance(receipt.get("generation_attempts"), int) or not 1 <= receipt["generation_attempts"] <= 4:
