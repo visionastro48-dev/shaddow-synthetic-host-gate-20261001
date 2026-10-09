@@ -30,3 +30,7 @@ jobs:
         run: python3 angels-recovery/argus_recovery_observer.py
       - name: Observe legacy Supabase PostgreSQL TCP transport without credentials
         run: python3 angels-recovery/argus_legacy_db_transport.py
+      - name: Regression test real-vs-readonly data-plane truth gates
+        run: python3 angels-recovery/test_argus_readonly_truth_gates.py
+      - name: Observe original production HOLD and public edge truth without authority
+        run: python3 angels-recovery/argus_readonly_truth_gates.py
