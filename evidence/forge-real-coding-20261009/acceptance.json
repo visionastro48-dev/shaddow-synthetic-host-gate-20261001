@@ -1,0 +1,14 @@
+{
+  "attempts": 1,
+  "authority": "none",
+  "continuous_workforce_certified": false,
+  "gateway_enrolled": false,
+  "independent_tests_passed": 11,
+  "independent_tests_total": 11,
+  "legacy_data_mounted": false,
+  "model": "qwen3:4b-instruct",
+  "outcome": "REAL_MODEL_CODE_ACCEPTED",
+  "schema": "angels.forge.real-local-model-coding/v1",
+  "source_sha256": "f4f882d7bf11c8b627c1de5ac2bca277bd8550c1f18dc3d8b00eeba3e0623463",
+  "tool_call_real": true
+}
