@@ -1,0 +1,35 @@
+# Public, credential-free observer only. Never interpret HTTP health as ANGELS authority.
+name: ANGELS Foundation 30m Readonly Monitor
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/angels-foundation-30m-readonly.yml'
+      - 'angels-recovery/angels_foundation_30m_observer.py'
+      - 'angels-recovery/test_angels_foundation_30m_observer.py'
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: angels-foundation-30m-readonly-observer
+  cancel-in-progress: false
+jobs:
+  observe-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout observer only, without persisting token
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Test all fail-closed, no-production rules
+        run: python3 -m unittest discover -v -s angels-recovery -p 'test_angels_foundation_30m_observer.py'
+      - name: Observe public health and create honest progress report
+        run: python3 angels-recovery/angels_foundation_30m_observer.py
+      - name: Publish non-sensitive report in pre-existing ANGELS public monitoring issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 10 --repo "$GITHUB_REPOSITORY" --body-file read-only-report.md
