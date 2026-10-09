@@ -12,19 +12,32 @@ export WORK="$(mktemp -d /tmp/angels-forge-synthetic.XXXXXX)"
 trap 'sudo docker rm -f angels-ollama-test >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
 mkdir -p "$WORK";cd "$WORK"
 printf '%s\n' '{"production_authority_enabled":false,"external_side_effects_enabled":false,"legacy_job_replay_enabled":false}' > safe.json
-sudo docker run --rm -d --name angels-ollama-test -p 127.0.0.1:11434:11434 ollama/ollama:0.11.10 >/dev/null
+sudo docker run --rm -d --name angels-ollama-test -p 127.0.0.1:11434:11434 -e OLLAMA_CONTEXT_LENGTH=16384 -e OLLAMA_NUM_PARALLEL=1 ollama/ollama:0.11.10 >/dev/null
 for i in {1..30};do if curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1;then break;fi;sleep 2;done
 curl -fsS --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null
 echo "ANGELS_MODEL_DOWNLOAD_START"
-timeout 500 sudo docker exec angels-ollama-test ollama pull qwen2.5-coder:3b >/dev/null
+timeout 500 sudo docker exec angels-ollama-test ollama pull qwen3:4b-instruct >/dev/null
 echo "ANGELS_MODEL_DOWNLOAD_OK"
 python3 - <<'PY'
 import json,urllib.request
-payload={"model":"qwen2.5-coder:3b","prompt":"Reply only with the text AGENT_READY","stream":False,"options":{"num_predict":12,"temperature":0,"num_ctx":1024}}
+payload={"model":"qwen3:4b-instruct","prompt":"Reply only with the text AGENT_READY","stream":False,"options":{"num_predict":12,"temperature":0,"num_ctx":1024}}
 request=urllib.request.Request("http://127.0.0.1:11434/api/generate",data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"})
 with urllib.request.urlopen(request,timeout=110) as resp: obj=json.load(resp)
 assert obj.get("done") is True and bool((obj.get("response") or "").strip()),"model has not produced inference"
 print(json.dumps({"kind":"local_model_inference","verified":True,"model":obj.get("model"),"tokens":obj.get("eval_count")},sort_keys=True))
+PY
+# Do not confuse textual imitation of a tool call with a real structured tool call.
+# This guard catches the previous qwen2.5-coder:3b failure before launching OpenHands.
+python3 - <<'PY'
+import json, urllib.request
+schema={"type":"function","function":{"name":"create_gate_file","description":"Create the requested harmless gate script in a disposable local test workspace.","parameters":{"type":"object","properties":{"filename":{"type":"string","description":"The Python filename"}},"required":["filename"]}}}
+payload={"model":"qwen3:4b-instruct","messages":[{"role":"system","content":"For the next instruction you MUST invoke the supplied tool; do not print JSON or describe the tool."},{"role":"user","content":"Call create_gate_file with filename gate_verify.py, not a textual response."}],"tools":[schema],"stream":False,"options":{"num_ctx":8192,"num_predict":192,"temperature":0}}
+req=urllib.request.Request("http://127.0.0.1:11434/api/chat",data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"})
+with urllib.request.urlopen(req, timeout=150) as rsp:
+ obj=json.load(rsp)
+calls=(obj.get("message") or {}).get("tool_calls") or []
+assert any(x.get("function",{}).get("name")=="create_gate_file" for x in calls), "NO_REAL_TOOL_CALL_FROM_MODEL"
+print("ANGELS_REAL_MODEL_STRUCTURED_TOOL_CALL_VERIFIED")
 PY
 echo "ANGELS_OPENHANDS_CLI_INSTALL_START"
 python3 -m pip -q install --user --break-system-packages 'uv>=0.11.6,<0.13' || python3 -m pip -q install --user 'uv>=0.11.6,<0.13'
@@ -38,7 +51,7 @@ from openhands.sdk import LLM
 from openhands_cli.utils import get_default_cli_agent
 from openhands_cli.locations import get_persistence_dir
 from pathlib import Path
-llm=LLM(model="ollama_chat/qwen2.5-coder:3b",api_key="local-synthetic-model-no-account-key",base_url="http://127.0.0.1:11434",usage_id="agent",reasoning_effort="none")
+llm=LLM(model="ollama_chat/qwen3:4b-instruct",api_key="local-synthetic-model-no-account-key",base_url="http://127.0.0.1:11434",usage_id="agent",reasoning_effort="none")
 agent=get_default_cli_agent(llm)
 p=Path(get_persistence_dir())/"agent_settings.json"
 p.parent.mkdir(parents=True,exist_ok=True)
@@ -49,7 +62,7 @@ assert verified.llm.reasoning_effort=="none"
 print("ANGELS_OPENHANDS_NONTHINKING_CONFIG_VERIFIED")
 PY
 export OPENHANDS_SUPPRESS_BANNER=1
-export LLM_MODEL='ollama_chat/qwen2.5-coder:3b'
+export LLM_MODEL='ollama_chat/qwen3:4b-instruct'
 export LLM_API_KEY='local-synthetic-model-no-account-key'
 export LLM_BASE_URL='http://127.0.0.1:11434'
 export OPENHANDS_MAX_ITERATIONS=12
