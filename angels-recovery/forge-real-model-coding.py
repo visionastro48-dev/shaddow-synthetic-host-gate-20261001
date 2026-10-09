@@ -5,7 +5,7 @@ This uses only Ollama's real structured tool-call API (no mocked LLM output).
 No private repository, account key, Gateway authority or paid model is involved.
 It is NOT original ANGELS agent enrollment and does not promote source.
 """
-import ast, hashlib, json, os, subprocess, sys, tempfile, time, urllib.request
+import ast, hashlib, json, os, shutil, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
 
 MODEL="qwen3:4b-instruct"
@@ -139,6 +139,13 @@ def main():
              "independent_tests_passed":total,"independent_tests_total":total,
              "authority":"none","legacy_data_mounted":False,"gateway_enrolled":False,
              "continuous_workforce_certified":False}
+    # Retain only synthetic, independently verified output outside the disposable workdir.
+    export = Path(os.environ.get("GITHUB_WORKSPACE", str(root))) / "forge-accepted-output"
+    export.mkdir(parents=True, exist_ok=True, mode=0o700)
+    shutil.copyfile(target, export / "gate_verify.py")
+    (export / "acceptance.json").write_text(json.dumps(receipt,indent=2,sort_keys=True)+"\n")
+    copied_hash=hashlib.sha256((export / "gate_verify.py").read_bytes()).hexdigest()
+    if copied_hash!=receipt["source_sha256"]:raise RuntimeError("TRANSFER_ARTIFACT_DIGEST_CHANGED")
     print("ANGELS_FORGE_REAL_CODING_RECEIPT="+json.dumps(receipt,sort_keys=True),flush=True)
     return
    history=[
