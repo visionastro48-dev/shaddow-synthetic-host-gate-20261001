@@ -35,5 +35,51 @@ class WitnessTests(unittest.TestCase):
     def test_no_paid_model(self):
         self.assertEqual(validate_cycle(RUN,{**RECEIPT,"model":"paid"},SOURCE,NOW)[1],"contract_model")
 
+    def test_two_distinct_scheduled_cycles_with_independent_receipts(self):
+        import base64
+        from unittest.mock import patch
+        runs = [{**RUN, "id": 101}, {**RUN, "id": 102}]
+        def fake_fetch(url):
+            if "/runs?event=schedule" in url:
+                return {"workflow_runs": runs}
+            rid = int(url.split("forge-")[1].split("/")[0])
+            if url.endswith("/receipt.json"):
+                receipt = {**RECEIPT, "workflow_run_id": rid,
+                           "workflow_run_url": "https://github.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/actions/runs/" + str(rid)}
+                return {"content": base64.b64encode(__import__("json").dumps(receipt).encode()).decode()}
+            if url.endswith("/gate_verify.py"):
+                return {"content": base64.b64encode(SOURCE).decode()}
+            raise AssertionError(url)
+        with patch("forge_recurring_witness.datetime") as clock:
+            clock.now.return_value = NOW
+            result = witness(fetch=fake_fetch)
+        self.assertEqual(result["verified_run_ids"], [101,102])
+        self.assertEqual(result["two_cycle_gate"], "PASS_BOUNDED_ONLY")
+        self.assertFalse(result["always_on_worker_certified"])
+        self.assertFalse(result["production_authority"])
+
+    def test_conflicting_second_receipt_does_not_pass_gate(self):
+        import base64
+        from unittest.mock import patch
+        runs = [{**RUN, "id": 101}, {**RUN, "id": 102}]
+        def fake_fetch(url):
+            if "/runs?event=schedule" in url:
+                return {"workflow_runs": runs}
+            rid = int(url.split("forge-")[1].split("/")[0])
+            if url.endswith("/receipt.json"):
+                receipt = {**RECEIPT, "workflow_run_id": rid,
+                           "workflow_run_url": "https://github.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/actions/runs/" + str(rid)}
+                if rid == 102: receipt["gateway_enrolled"] = True
+                return {"content": base64.b64encode(__import__("json").dumps(receipt).encode()).decode()}
+            if url.endswith("/gate_verify.py"):
+                return {"content": base64.b64encode(SOURCE).decode()}
+            raise AssertionError(url)
+        with patch("forge_recurring_witness.datetime") as clock:
+            clock.now.return_value = NOW
+            result = witness(fetch=fake_fetch)
+        self.assertEqual(result["verified_run_ids"], [101])
+        self.assertEqual(result["two_cycle_gate"], "WAITING")
+        self.assertEqual(result["rejected"][0]["reason"], "contract_gateway_enrolled")
+
 if __name__=="__main__":
     unittest.main()
