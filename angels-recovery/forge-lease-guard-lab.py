@@ -10,11 +10,16 @@ from pathlib import Path
 
 MODEL="qwen3:4b-instruct"
 ENDPOINT="http://127.0.0.1:11434/api/chat"
-MAX_ATTEMPTS=1
+MAX_ATTEMPTS=4
 CONTRACT={"mission_id":"FORGE-LEASE-002","writer_id":"foundation-worker-1",
           "claim_epoch":7,"external_effects_allowed":False,"nonce":"0123456789abcdef"}
 TASK=(
  "Write exactly one Python 3 script lease_verify.py. It takes exactly ONE JSON filename. "
+ "CRITICAL: sys.argv[1] is a FILE PATH, NEVER a JSON text string. Call open(sys.argv[1], encoding='utf-8') "
+ "and then json.load(the_opened_file) to parse contents. NEVER call json.loads(sys.argv[1]). "
+ "The valid file content is: {\"mission_id\":\"FORGE-LEASE-002\",\"writer_id\":\"foundation-worker-1\","
+ "\"claim_epoch\":7,\"external_effects_allowed\":false,\"nonce\":\"0123456789abcdef\"}. "
+ "This valid FILE must print CLAIM_OK and exit 0. "
  "Return exit 0 and print CLAIM_OK ONLY when JSON is a dictionary with EXACTLY these five keys: "
  "mission_id, writer_id, claim_epoch, external_effects_allowed, nonce. "
  "mission_id must be string FORGE-LEASE-002; writer_id must be string foundation-worker-1. "
@@ -179,9 +184,8 @@ def main():
     return
    history=[
     {"role":"system","content":"You are a coding repair agent. You must call the actual write_lease_code tool. No textual imitation."},
-    {"role":"user","content":TASK+"\nYour previous attempt failed these independent tests: "+json.dumps(problems[:7])+"\nRevalidate all 18 cases including unexpected keys, bool epoch, invalid nonce, and extra arguments. The only valid keys are mission_id, writer_id, claim_epoch, external_effects_allowed, nonce. Source was:\n"+content[:3500]+"\nCall write_lease_code again with repaired full source."}
+    {"role":"user","content":TASK+"\nYour previous attempt failed these independent tests: "+json.dumps(problems[:7])+"\nRevalidate all 18 cases including unexpected keys, bool epoch, invalid nonce, and extra arguments. The only valid keys are mission_id, writer_id, claim_epoch, external_effects_allowed, nonce. CRITICAL: argv[1] is a FILE PATH; use open(argv[1]) plus json.load(file), NEVER json.loads(argv[1]); the valid file must yield CLAIM_OK exit 0. Use type(epoch) is int, not isinstance(epoch,int). Source was:\n"+content[:3500]+"\nCall write_lease_code again with repaired full source."}
    ]
- emit("SECOND_MISSION_REJECTED_SOURCE_DIAGNOSTIC", candidate_source=content[:6000], failing_cases=problems, attempt=attempt)
  raise RuntimeError("REAL_AGENT_COULD_NOT_PASS_INDEPENDENT_TESTS")
 
 if __name__=="__main__":
