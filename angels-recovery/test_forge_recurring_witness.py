@@ -57,8 +57,7 @@ class WitnessTests(unittest.TestCase):
 
     def test_conflicting_second_receipt_does_not_pass_gate(self):
         import base64
-        from unittest.mock import patch
-        runs = [{**RUN, "id": 101}, {**RUN, "id": 102}]
+        runs = [{**RUN, "id": 101, "created_at": datetime.now(timezone.utc).isoformat()}, {**RUN, "id": 102, "created_at": datetime.now(timezone.utc).isoformat()}]
         def fake_fetch(url):
             if "/runs?event=schedule" in url:
                 return {"workflow_runs": runs}
@@ -71,9 +70,7 @@ class WitnessTests(unittest.TestCase):
             if url.endswith("/gate_verify.py"):
                 return {"content": base64.b64encode(SOURCE).decode()}
             raise AssertionError(url)
-        with patch("forge_recurring_witness.datetime") as clock:
-            clock.now.return_value = NOW
-            result = witness(fetch=fake_fetch)
+        result = witness(fetch=fake_fetch)
         self.assertEqual(result["verified_run_ids"], [101])
         self.assertEqual(result["two_cycle_gate"], "WAITING")
         self.assertEqual(result["rejected"][0]["reason"], "contract_gateway_enrolled")
