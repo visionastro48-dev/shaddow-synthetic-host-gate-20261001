@@ -1,0 +1,27 @@
+# ANGELS isolated self-contained coding rehearsal. No legacy source, no paid LLM keys, no production dispatch.
+name: ANGELS OpenHands FORGE Local Model Trial
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'angels-recovery/openhands-local-model-safe-trial.sh'
+      - '.github/workflows/angels-openhands-forge-local-model-trial.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: angels-openhands-forge-local-model-once
+  cancel-in-progress: false
+jobs:
+  independent-synthetic-task:
+    if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout only existing public synthetic trial code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify actual local LLM inference and native OpenHands task with independent fail-closed tests
+        shell: bash
+        run: bash angels-recovery/openhands-local-model-safe-trial.sh
