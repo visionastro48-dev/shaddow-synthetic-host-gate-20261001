@@ -1,0 +1,63 @@
+# Isolated second task. Synthetic lease validation only; not an ANGELS Gateway worker.
+# Triggered ONLY by changes to this lab branch. No secrets, company code, or authority.
+name: ANGELS FORGE Independent Lease Mission Lab
+on:
+  push:
+    branches: [lab/forge-independent-lease-20261009]
+    paths:
+      - 'angels-recovery/forge-lease-guard-lab.py'
+      - 'angels-recovery/test_forge_lease_lab.py'
+      - '.github/workflows/angels-forge-lease-mission-lab.yml'
+permissions:
+  contents: read
+concurrency:
+  group: angels-forge-lease-lab-isolated
+  cancel-in-progress: false
+jobs:
+  second-bounded-real-model-mission:
+    if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    steps:
+      - name: Checkout public synthetic lab (never original ANGELS)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pinned
+        with:
+          persist-credentials: false
+      - name: Independently validate lease-guard acceptance contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s angels-recovery -p 'test_forge_lease_lab.py' -v
+          python3 -m py_compile angels-recovery/forge-lease-guard-lab.py
+      - name: Start disposable local, free model without production credentials
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -z "$(printenv ANGELS_MODULE_TOKEN || true)"
+          test -z "$(printenv OPENAI_API_KEY || true)"
+          test -z "$(printenv OPENROUTER_API_KEY || true)"
+          docker run -d --rm --name angels-forge-lease-ollama -p 127.0.0.1:11434:11434 \
+            -e OLLAMA_NUM_PARALLEL=1 -e OLLAMA_CONTEXT_LENGTH=8192 \
+            ollama/ollama:0.11.10 >/dev/null
+          for attempt in $(seq 1 40); do
+            if curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 2
+          done
+          timeout 500 docker exec angels-forge-lease-ollama ollama pull qwen3:4b-instruct >/dev/null
+          echo 'FORGE_SECOND_LAB_MODEL_READY'
+      - name: Execute real-model second lease mission with 18 independent cases
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout 900 python3 angels-recovery/forge-lease-guard-lab.py
+      - name: Retain synthetic source and acceptance receipt as non-executable evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: angels-forge-second-bounded-lab
+          path: forge-lease-output/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Dispose model process and runtime
+        if: always()
+        run: docker rm -f angels-forge-lease-ollama >/dev/null 2>&1 || true
