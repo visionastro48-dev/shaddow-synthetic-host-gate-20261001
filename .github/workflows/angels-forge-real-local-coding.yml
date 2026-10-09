@@ -7,6 +7,10 @@ on:
     paths:
       - 'angels-recovery/forge-real-model-coding.py'
       - '.github/workflows/angels-forge-real-local-coding.yml'
+  schedule:
+    # Synthetic, zero-authority trial on free standard public-repo runners.
+    # This is NOT continuous 24/7 operation or ANGELS Gateway admission.
+    - cron: '17 */6 * * *'
   workflow_dispatch:
 permissions:
   contents: read
