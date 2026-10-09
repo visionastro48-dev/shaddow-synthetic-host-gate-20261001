@@ -1,13 +1,13 @@
 # One-shot, synthetic Hermes Agent verification. Public runner, no ANGELS secrets or authority.
 # No scheduled repeat and no deployments. All computation remains on disposable runner.
-name: ANGELS Hermes Independent Artifact Gate
+name: ANGELS Hermes Real Handoff Module Build
 on:
   push:
-    branches: [lab/hermes-independent-artifact-20261009]
+    branches: [lab/hermes-real-module-20261009]
     paths: [.github/workflows/angels-hermes-real-free-smoke.yml]
 permissions: {}
 concurrency:
-  group: angels-hermes-independent-artifact
+  group: angels-hermes-real-module
   cancel-in-progress: false
 
 jobs:
@@ -46,7 +46,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HERMES_HOME/bin" >> "$GITHUB_PATH"
 
-      - name: Execute one bounded real Hermes model and independently verify artifact
+      - name: Hermes implements ANGELS handoff module and independent tests
         shell: bash
         timeout-minutes: 5
         run: |
@@ -72,24 +72,105 @@ jobs:
           chmod 700 "$HERMES_HOME"
           printf '%s\n'             'model:'             '  default: "nvidia/nemotron-3.5-lightning:free"'             '  provider: custom'             '  base_url: "http://127.0.0.1:8765/v1"'             '  api_key: ""'             'fallback_providers: []'             'terminal:'             '  backend: local'             > "$HERMES_HOME/config.yaml"
           chmod 600 "$HERMES_HOME/config.yaml"
-          printf '%s\n'             'You are a disposable coding worker with no production credentials, no business authority, and no ability to deploy.'             'Use terminal to run the exact command: printf "ANGELS_HERMES_REAL_OK\\n" > hello.txt. Do not merely describe it.'             'Its exact content must be ANGELS_HERMES_REAL_OK followed by a newline.'             'Run terminal verification: test "$(cat hello.txt)" = "ANGELS_HERMES_REAL_OK". If the test fails, repair the file and test again. Do not leave this work folder.'             > "$RUNNER_TEMP/hermes-task.txt"
+          cat > "$RUNNER_TEMP/hermes-workspace/hermes-handoff.test.mjs" <<'NODE'
+          import test from "node:test";
+          import assert from "node:assert/strict";
+          import { inspectHermesHandoff } from "./hermes-handoff.mjs";
+          
+          const h = "a".repeat(64), alt = "b".repeat(64);
+          const receipt = () => ({
+            mission_id:"angels_adapter_v1", mission_sha256:h,
+            status:"UNVERIFIED_WORKER_OUTPUT", gateway_joined:false,
+            authority_granted:false, independently_verified:false
+          });
+          const proof = () => ({
+            missionId:"angels_adapter_v1", missionSha256:h,
+            expectedArtifactSha256:alt, observedArtifactSha256:alt
+          });
+          test("A real matching artifact produces ONLY bounded hash verdict", () => {
+            const x = inspectHermesHandoff(receipt(), proof());
+            assert.deepEqual(x, {verdict:"ARTIFACT_HASH_MATCH_ONLY"});
+          });
+          test("No receipt fails closed", () => {
+            assert.equal(inspectHermesHandoff(null,proof()).verdict,"REJECTED");
+          });
+          test("No external artifact witness fails closed", () => {
+            assert.equal(inspectHermesHandoff(receipt(),null).verdict,"REJECTED");
+          });
+          test("Wrong mission identifier fails closed", () => {
+            const r=receipt(); r.mission_id="other_job";
+            assert.equal(inspectHermesHandoff(r,proof()).verdict,"REJECTED");
+          });
+          test("Wrong mission digest fails closed", () => {
+            const r=receipt(); r.mission_sha256=alt;
+            assert.equal(inspectHermesHandoff(r,proof()).verdict,"REJECTED");
+          });
+          test("Wrong artifact digest fails closed", () => {
+            const p=proof(); p.observedArtifactSha256=h;
+            assert.equal(inspectHermesHandoff(receipt(),p).verdict,"REJECTED");
+          });
+          test("Missing or malformed hash fails closed", () => {
+            const p=proof(); p.expectedArtifactSha256="not-a-digest";
+            assert.equal(inspectHermesHandoff(receipt(),p).verdict,"REJECTED");
+          });
+          test("Failed worker output is never promoted", () => {
+            const r=receipt(); r.status="FAILED";
+            assert.equal(inspectHermesHandoff(r,proof()).verdict,"REJECTED");
+          });
+          test("Self-declared gateway enrollment is not proof", () => {
+            const r=receipt(); r.gateway_joined=true;
+            assert.equal(inspectHermesHandoff(r,proof()).verdict,"REJECTED");
+          });
+          test("Self-declared independent verification is not proof", () => {
+            const r=receipt(); r.independently_verified=true;
+            assert.equal(inspectHermesHandoff(r,proof()).verdict,"REJECTED");
+          });
+          test("Production authority claim is rejected", () => {
+            const r=receipt(); r.authority_granted=true;
+            assert.equal(inspectHermesHandoff(r,proof()).verdict,"REJECTED");
+          });
+          NODE
           cd "$RUNNER_TEMP/hermes-workspace"
+          sha256sum hermes-handoff.test.mjs > "$RUNNER_TEMP/tests.sha256"
+          printf '%s\n' \
+            'You are implementing a REAL reusable ANGELS Hermes Agent integration helper, not a demo hello-file.' \
+            'Only create the file hermes-handoff.mjs in the current isolated working directory. Do not modify hermes-handoff.test.mjs. No network, production, or company authority.' \
+            'Export a function named inspectHermesHandoff(receipt, proof) from hermes-handoff.mjs. It must return EXACTLY {verdict:'\''ARTIFACT_HASH_MATCH_ONLY'\''} if and only if:' \
+            'receipt and proof are non-array objects; receipt.status is UNVERIFIED_WORKER_OUTPUT; receipt.gateway_joined, receipt.authority_granted and receipt.independently_verified are all strictly false; receipt.mission_id equals proof.missionId (nonempty string); receipt.mission_sha256 equals proof.missionSha256, valid 64-char lowercase hex; proof.expectedArtifactSha256 and proof.observedArtifactSha256 are equal valid 64-char lowercase hex strings.' \
+            'For every other case return exactly {verdict:'\''REJECTED'\''}. Never output DONE, VERIFIED, AUTHORIZED, or claim an internal ANGELS worker acknowledged anything.' \
+            'Use the terminal tools to write real JavaScript code, then run node --test hermes-handoff.test.mjs. Fix code and rerun tests until all pass. The tests are a protected independent acceptance suite.' \
+            'Your response is irrelevant unless the actual file exists and all acceptance tests pass. Complete only this bounded module.' > "$RUNNER_TEMP/hermes-task.txt"
           set +e
-          timeout 170 hermes chat --oneshot --quiet --toolsets "terminal,file" --max-turns 8 --provider custom --model "nvidia/nemotron-3.5-lightning:free" --query-file "$RUNNER_TEMP/hermes-task.txt" > "$RUNNER_TEMP/hermes-log.txt" 2>&1
+          timeout 170 hermes chat --oneshot --quiet --toolsets "terminal,file" --max-turns 10 --provider custom --model "nvidia/nemotron-3.5-lightning:free" --query-file "$RUNNER_TEMP/hermes-task.txt" > "$RUNNER_TEMP/hermes-log.txt" 2>&1
           result=$?
           set -e
           echo "HERMES_EXIT_STATUS=$result"
-          sed -n '1,100p' "$RUNNER_TEMP/hermes-log.txt"
+          sed -n '1,110p' "$RUNNER_TEMP/hermes-log.txt"
           echo 'HERMES_PROXY_RECEIPTS_BEGIN'
-          sed -n '1,80p' "$RUNNER_TEMP/hermes-proxy.log"
+          sed -n '1,120p' "$RUNNER_TEMP/hermes-proxy.log"
           echo 'HERMES_PROXY_RECEIPTS_END'
           test "$result" -eq 0
           grep -q '"event": "FREE_INFERENCE_RECEIPT"' "$RUNNER_TEMP/hermes-proxy.log"
-          test -f hello.txt
-          cmp -s hello.txt <(printf 'ANGELS_HERMES_REAL_OK\n')
-          sha256sum hello.txt
-          echo 'REAL_HERMES_CODING_MISSION_ARTIFACT_VERIFIED=true'
+          test -s hermes-handoff.mjs
+          sha256sum -c "$RUNNER_TEMP/tests.sha256"
+          echo 'HERMES_CODE_FILE_BEGIN'
+          sed -n '1,180p' hermes-handoff.mjs
+          echo 'HERMES_CODE_FILE_END'
+          node --test hermes-handoff.test.mjs
+          sha256sum hermes-handoff.mjs
+          echo 'REAL_HERMES_HANDOFF_MODULE_VERIFIED=true'
           echo 'NO_ANGELS_GATEWAY_ENROLLMENT=true'
+
+      - name: Archive Hermes code and independent tests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: angels-hermes-real-integration-module
+          path: |
+            ${{ runner.temp }}/hermes-workspace/hermes-handoff.mjs
+            ${{ runner.temp }}/hermes-workspace/hermes-handoff.test.mjs
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Retain truth boundary
         if: always()
