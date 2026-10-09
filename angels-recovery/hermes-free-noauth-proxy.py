@@ -58,7 +58,7 @@ class Handler(BaseHTTPRequestHandler):
                      "model":model, "choices":[{"index":0,"delta":delta,"finish_reason":finish_reason}]}
             if usage is not None:
                 chunk["usage"] = usage
-            self.wfile.write(("data: " + json.dumps(chunk, separators=(",", ":")) + "\\n\\n").encode("utf-8"))
+            self.wfile.write(("data: " + json.dumps(chunk, separators=(",", ":")) + "\n\n").encode("utf-8"))
             self.wfile.flush()
         event({"role":"assistant"})
         if message.get("content") is not None:
@@ -70,7 +70,7 @@ class Handler(BaseHTTPRequestHandler):
                             "arguments":call.get("function", {}).get("arguments", "")}
             }]})
         event({}, choice.get("finish_reason") or "stop", response_data.get("usage"))
-        self.wfile.write(b"data: [DONE]\\n\\n")
+        self.wfile.write(b"data: [DONE]\n\n")
         self.wfile.flush()
         self.close_connection = True
 
