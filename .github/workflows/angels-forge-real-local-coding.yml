@@ -43,6 +43,14 @@ jobs:
           set -Eeuo pipefail
           python3 -m py_compile angels-recovery/forge-real-model-coding.py
           timeout 900 python3 angels-recovery/forge-real-model-coding.py
+      - name: Preserve independently verified synthetic source and receipt
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2, pinned
+        with:
+          name: angels-forge-accepted
+          path: forge-accepted-output/
+          if-no-files-found: error
+          retention-days: 7
       - name: Dispose local model and runtime
         if: always()
         run: docker rm -f angels-forge-ollama >/dev/null 2>&1 || true
