@@ -12,6 +12,10 @@ on:
     # This is NOT continuous 24/7 operation or ANGELS Gateway admission.
     - cron: '17 */6 * * *'
   workflow_dispatch:
+  # Real GitHub-hosted runner, not a ChatGPT scheduled task. Every hour UTC.
+  # UTC minute 47 deliberately avoids top-of-hour GitHub cron congestion.
+  schedule:
+    - cron: '47 * * * *'
 permissions:
   contents: read
 concurrency:
