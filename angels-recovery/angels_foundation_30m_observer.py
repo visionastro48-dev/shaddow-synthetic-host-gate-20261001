@@ -19,7 +19,7 @@ ENDPOINTS = {
 
 def fetch(name, url):
     assert ENDPOINTS[name] == url
-    request = urllib.request.Request(url, headers={"Accept": "application/json", "Cache-Control": "no-cache", "User-Agent": "ANGELS-Readonly30m/1.0"}, method="GET")
+    request = urllib.request.Request(url, headers={"Accept": "application/json", "Cache-Control": "no-cache", "User-Agent": "ANGELS-ReadonlyHourly/1.0"}, method="GET")
     try:
         with urllib.request.urlopen(request, timeout=13) as res:
             status = res.status
@@ -72,8 +72,8 @@ def audit(probes, now=None):
                           "Verify OpenHands process, model access and first independent agent work receipt",
                           "Await provider-supported native PostgreSQL recovery and validate original source data",
                           "Prove cross-provider global single-writer fencing before any production worker effects"])
-    return {"schema":"angels.public-readonly-30minute-observer/v1","observed_at_utc":now.isoformat().replace("+00:00", "Z"),
-            "cadence":"best-effort cron at minutes 7 and 37", "engineer_estimate_percent":25,
+    return {"schema":"angels.public-readonly-hourly-observer/v1","observed_at_utc":now.isoformat().replace("+00:00", "Z"),
+            "cadence":"best-effort hourly cron at minute 7", "engineer_estimate_percent":25,
             "percent_certified":False,"percent_proof":"unchanged founder-facing estimate; no computation from health probes",
             "openhands_running":"NOT_VERIFIED","openhands_workers_started":"NOT_VERIFIED",
             "production_worker_execution":"NOT_CERTIFIED", "original_pg_native_restored":"NOT_VERIFIED",
@@ -86,7 +86,7 @@ def audit(probes, now=None):
 
 def markdown(a):
     v=lambda flag: "PASS" if flag else "NOT VERIFIED"
-    return (f"### ANGELS — bounded 30-minute read-only update ({a['observed_at_utc']})\n\n"
+    return (f"### ANGELS — bounded hourly read-only update ({a['observed_at_utc']})\n\n"
             f"**Estimated full mandate progress: ~{a['engineer_estimate_percent']}%** (prior engineering estimate, not freshly certified or automatically increased).\n\n"
             f"| Evidence gate | Result |\n|---|---|\n"
             f"| OpenHands running + ANGELS boys executing | {a['openhands_workers_started']} |\n"
