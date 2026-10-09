@@ -1,0 +1,48 @@
+# Disposable real-model code-generation trial; never checks out ANGELS private source.
+# Only synthetic no-authority files are tested, and no API keys are injected.
+name: ANGELS FORGE Real Local Coding Gate
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'angels-recovery/forge-real-model-coding.py'
+      - '.github/workflows/angels-forge-real-local-coding.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: angels-forge-real-local-coding
+  cancel-in-progress: false
+jobs:
+  real-llm-coding:
+    if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Prepare disposable localhost Ollama inference
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+          test -z "$ANGELS_MODULE_TOKEN"
+          docker run -d --rm --name angels-forge-ollama -p 127.0.0.1:11434:11434 \
+            -e OLLAMA_NUM_PARALLEL=1 -e OLLAMA_CONTEXT_LENGTH=8192 \
+            ollama/ollama:0.11.10 > /dev/null
+          for i in $(seq 1 40); do
+            curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null && break
+            sleep 2
+          done
+          timeout 500 docker exec angels-forge-ollama ollama pull qwen3:4b-instruct > /dev/null
+          echo 'LOCAL_MODEL_INSTALLED_AND_ENDPOINT_READY'
+      - name: Real model writes code through structured tool; independent tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile angels-recovery/forge-real-model-coding.py
+          timeout 900 python3 angels-recovery/forge-real-model-coding.py
+      - name: Dispose local model and runtime
+        if: always()
+        run: docker rm -f angels-forge-ollama >/dev/null 2>&1 || true
