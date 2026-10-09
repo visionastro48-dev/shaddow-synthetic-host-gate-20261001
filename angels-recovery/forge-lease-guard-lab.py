@@ -92,7 +92,7 @@ def repair_exact_int_bool_confusion(source):
  if not fixer.changed:
   return None
  ast.fix_missing_locations(tree)
- result=ast.unparse(tree)+"\\n"
+ result=ast.unparse(tree)+"\n"
  scan_code(result)
  return result
 
