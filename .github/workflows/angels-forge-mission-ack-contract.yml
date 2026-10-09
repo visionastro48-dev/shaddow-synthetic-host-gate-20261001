@@ -1,0 +1,33 @@
+# Read-only tests for bounded GitHub issue mission ACK receipt validation.
+# Does not close issues, grant Gateway authority or run generated code.
+name: ANGELS FORGE GitHub Mission ACK Contract
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'angels-recovery/forge_mission_ack.py'
+      - 'angels-recovery/test_forge_mission_ack.py'
+      - '.github/workflows/angels-forge-mission-ack-contract.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: angels-forge-github-ack-contract
+  cancel-in-progress: false
+jobs:
+  verify-github-ack-boundary:
+    if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify bounded issue-ACK rules and fail-closed cases
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+          python3 -m py_compile angels-recovery/forge_mission_ack.py angels-recovery/test_forge_mission_ack.py
+          python3 -m unittest discover -s angels-recovery -p 'test_forge_mission_ack.py' -v
+          echo 'ANGELS_FORGE_GITHUB_ACK_CONTRACT=PASSED_READ_ONLY'
