@@ -133,7 +133,21 @@ jobs:
           fi
           git commit -m "Preserve verified synthetic FORGE run ${GITHUB_RUN_ID}"
           for attempt in 1 2 3 4; do
-            git pull --rebase origin main
+            git fetch origin main
+            # A competing publisher may have committed the same run's immutable
+            # receipt. Accept only byte-identical remote evidence, never overwrite.
+            if git cat-file -e "origin/main:${evidence_dir}/receipt.json" 2>/dev/null; then
+              git cat-file -e "origin/main:${evidence_dir}/gate_verify.py"
+              git show "origin/main:${evidence_dir}/receipt.json" | cmp - "${evidence_dir}/receipt.json"
+              git show "origin/main:${evidence_dir}/gate_verify.py" | cmp - "${evidence_dir}/gate_verify.py"
+              echo "FORGE_DURABLE_GIT_RECEIPT=IDEMPOTENT_CONCURRENT_PUBLISH run_id=${GITHUB_RUN_ID}"
+              exit 0
+            fi
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo 'FORGE_DURABLE_GIT_RECEIPT=REBASE_CONFLICT_FAIL_CLOSED' >&2
+              exit 1
+            fi
             if git push origin HEAD:main; then
               echo "FORGE_DURABLE_GIT_RECEIPT=PERSISTED run_id=${GITHUB_RUN_ID} commit=$(git rev-parse HEAD)"
               exit 0
