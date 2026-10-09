@@ -81,6 +81,21 @@ jobs:
         with:
           name: angels-forge-accepted
           path: forge-received
+      - name: Read any existing remote receipt before a GitHub job retry
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main
+          evidence_dir="angels-recovery/evidence/forge-runs/forge-${GITHUB_RUN_ID}"
+          receipt_path="${evidence_dir}/receipt.json"
+          source_path="${evidence_dir}/gate_verify.py"
+          if git cat-file -e "origin/main:${receipt_path}" 2>/dev/null; then
+            git cat-file -e "origin/main:${source_path}"
+            mkdir -p "$evidence_dir"
+            git show "origin/main:${receipt_path}" > "$receipt_path"
+            git show "origin/main:${source_path}" > "$source_path"
+            echo 'FORGE_PREVIOUS_REMOTE_RECEIPT=RECOVERED_AS_DATA'
+          fi
       - name: Regression-test durable publisher on synthetic fixtures
         shell: bash
         run: |
@@ -101,8 +116,17 @@ jobs:
           set -Eeuo pipefail
           git config user.name 'angels-forge-evidence'
           git config user.email 'angels-forge-evidence@users.noreply.github.com'
-          git add "angels-recovery/evidence/forge-runs/forge-${GITHUB_RUN_ID}/gate_verify.py" \
-                  "angels-recovery/evidence/forge-runs/forge-${GITHUB_RUN_ID}/receipt.json"
+          evidence_dir="angels-recovery/evidence/forge-runs/forge-${GITHUB_RUN_ID}"
+          # The current checkout predates a previously committed receipt on job reruns.
+          # Verify both bytes against the remote ledger BEFORE trying to commit again.
+          if git cat-file -e "origin/main:${evidence_dir}/receipt.json" 2>/dev/null; then
+            git cat-file -e "origin/main:${evidence_dir}/gate_verify.py"
+            git show "origin/main:${evidence_dir}/receipt.json" | cmp - "${evidence_dir}/receipt.json"
+            git show "origin/main:${evidence_dir}/gate_verify.py" | cmp - "${evidence_dir}/gate_verify.py"
+            echo "FORGE_DURABLE_GIT_RECEIPT=IDEMPOTENT_REMOTE_EXISTING run_id=${GITHUB_RUN_ID}"
+            exit 0
+          fi
+          git add "${evidence_dir}/gate_verify.py" "${evidence_dir}/receipt.json"
           if git diff --cached --quiet; then
             echo 'FORGE_DURABLE_GIT_RECEIPT=IDEMPOTENT_EXISTING'
             exit 0
