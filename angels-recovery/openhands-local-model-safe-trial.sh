@@ -16,11 +16,11 @@ sudo docker run --rm -d --name angels-ollama-test -p 127.0.0.1:11434:11434 ollam
 for i in {1..30};do if curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1;then break;fi;sleep 2;done
 curl -fsS --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null
 echo "ANGELS_MODEL_DOWNLOAD_START"
-timeout 500 sudo docker exec angels-ollama-test ollama pull qwen2.5-coder:1.5b >/dev/null
+timeout 500 sudo docker exec angels-ollama-test ollama pull qwen2.5-coder:3b >/dev/null
 echo "ANGELS_MODEL_DOWNLOAD_OK"
 python3 - <<'PY'
 import json,urllib.request
-payload={"model":"qwen2.5-coder:1.5b","prompt":"Reply only with the text AGENT_READY","stream":False,"options":{"num_predict":12,"temperature":0,"num_ctx":1024}}
+payload={"model":"qwen2.5-coder:3b","prompt":"Reply only with the text AGENT_READY","stream":False,"options":{"num_predict":12,"temperature":0,"num_ctx":1024}}
 request=urllib.request.Request("http://127.0.0.1:11434/api/generate",data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"})
 with urllib.request.urlopen(request,timeout=110) as resp: obj=json.load(resp)
 assert obj.get("done") is True and bool((obj.get("response") or "").strip()),"model has not produced inference"
@@ -33,10 +33,10 @@ timeout 480 uv tool install openhands --python 3.12 >"$WORK/install.log" 2>&1 ||
 command -v openhands >/dev/null
 echo "ANGELS_OPENHANDS_CLI_INSTALLED"
 export OPENHANDS_SUPPRESS_BANNER=1
-export LLM_MODEL='ollama_chat/qwen2.5-coder:1.5b'
+export LLM_MODEL='ollama_chat/qwen2.5-coder:3b'
 export LLM_API_KEY='local-synthetic-model-no-account-key'
 export LLM_BASE_URL='http://127.0.0.1:11434'
-export OPENHANDS_MAX_ITERATIONS=8
+export OPENHANDS_MAX_ITERATIONS=12
 task="You are a synthetic FORGE-role engineering trial within an EMPTY, DISPOSABLE WORKDIR. This is NOT company production and grants NO authority. Using your coding tools, create only the file gate_verify.py in the present workdir. The Python 3 script must accept a JSON input file path via sys.argv[1], check that production_authority_enabled, external_side_effects_enabled, and legacy_job_replay_enabled are each present and are exactly type bool and False, print FAIL_CLOSED_OK and exit code 0 only for that safe input; for any other condition, missing arguments, invalid JSON or missing file print BLOCKED and exit 2. Do not touch Git, network, credentials, customer data, payments, production, parent directories, or other files. Test the program. Stop after the file is created."
 echo "ANGELS_OPENHANDS_REAL_TASK_START"
 set +e
@@ -44,7 +44,7 @@ timeout 850 openhands --headless --json --override-with-envs --exit-without-conf
 agent_status=$?
 set -e
 echo "ANGELS_OPENHANDS_AGENT_EXIT=$agent_status"
-test -f "$WORK/gate_verify.py" || { echo "AGENT_DID_NOT_CREATE_FILE";tail -n 18 "$WORK/agent.log"|cut -c1-160;exit 4; }
+test -f "$WORK/gate_verify.py" || { echo "AGENT_DID_NOT_CREATE_FILE";grep -E -i 'error|fail|warning|LLM|model|provider|tool|conversation|backend|exception|invalid|timeout' "$WORK/agent.log" | tail -n 28 | cut -c1-210 || true;exit 4; }
 python3 - <<'PY'
 import json,pathlib,subprocess,sys,hashlib
 root=pathlib.Path.cwd()
