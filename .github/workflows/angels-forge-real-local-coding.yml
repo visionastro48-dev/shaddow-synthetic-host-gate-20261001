@@ -21,7 +21,9 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: angels-forge-real-local-coding
+  # Avoid newer code pushes or scheduled cycles discarding an authorized issue
+  # mission while it is queued. Preserve one pending run per event class.
+  group: ${{ github.event_name == 'issues' && format('angels-forge-owner-issue-{0}', github.event.issue.number) || format('angels-forge-{0}', github.event_name) }}
   cancel-in-progress: false
 jobs:
   real-llm-coding:
