@@ -42,6 +42,38 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_json(404, {"error":{"message":"unknown_path"}})
 
+    def send_sse(self, response_data):
+        choice = response_data["choices"][0]
+        message = choice.get("message") or {}
+        request_id = response_data.get("id", "angels-kilo-free")
+        model = response_data.get("model", "")
+        created = response_data.get("created", 0)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache, no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        def event(delta, finish_reason=None, usage=None):
+            chunk = {"id":request_id, "object":"chat.completion.chunk", "created":created,
+                     "model":model, "choices":[{"index":0,"delta":delta,"finish_reason":finish_reason}]}
+            if usage is not None:
+                chunk["usage"] = usage
+            self.wfile.write(("data: " + json.dumps(chunk, separators=(",", ":")) + "\\n\\n").encode("utf-8"))
+            self.wfile.flush()
+        event({"role":"assistant"})
+        if message.get("content") is not None:
+            event({"content":message["content"]})
+        for index, call in enumerate(message.get("tool_calls") or []):
+            event({"tool_calls":[{
+                "index":index, "id":call.get("id", ""), "type":"function",
+                "function":{"name":call.get("function", {}).get("name", ""),
+                            "arguments":call.get("function", {}).get("arguments", "")}
+            }]})
+        event({}, choice.get("finish_reason") or "stop", response_data.get("usage"))
+        self.wfile.write(b"data: [DONE]\\n\\n")
+        self.wfile.flush()
+        self.close_connection = True
+
     def do_POST(self):
         if self.path not in ("/v1/chat/completions", "/chat/completions"):
             return self.send_json(404, {"error":{"message":"unsupported_endpoint"}})
@@ -62,8 +94,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(403, {"error":{"message":"unapproved_or_paid_model"}})
         if not isinstance(req.get("messages"), list) or not req["messages"]:
             return self.send_json(400, {"error":{"message":"messages_required"}})
-        if req.get("stream") not in (False, None):
-            return self.send_json(400, {"error":{"message":"streaming_denied"}})
+        wants_stream = req.get("stream") is True
         req["stream"] = False
         req["max_tokens"] = min(max(int(req.get("max_tokens") or 128), 1), 768)
         wire = json.dumps(req, separators=(",", ":")).encode("utf-8")
@@ -82,7 +113,10 @@ class Handler(BaseHTTPRequestHandler):
                 print(json.dumps({"event":"UNVERIFIED_OR_NONZERO_COST","model":model,"cost":str(cost)}), flush=True)
                 return self.send_json(502, {"error":{"message":"nonzero_or_unverified_cost"}})
             print(json.dumps({"event":"FREE_INFERENCE_RECEIPT","model":model,"http":status,"cost":0,"request_sha256":hashlib.sha256(wire).hexdigest()}), flush=True)
-            self.send_json(status, response_data)
+            if wants_stream:
+                self.send_sse(response_data)
+            else:
+                self.send_json(status, response_data)
         except HTTPError as e:
             print(json.dumps({"event":"UPSTREAM_HTTP_FAILURE","model":model,"http":e.code}), flush=True)
             self.send_json(502, {"error":{"message":"upstream_unavailable","upstream_http":e.code}})
