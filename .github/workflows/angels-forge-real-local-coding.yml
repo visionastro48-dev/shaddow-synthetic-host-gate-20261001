@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - 'angels-recovery/forge-real-model-coding.py'
+      - 'angels-recovery/forge-evidence-publish.py'
+      - 'angels-recovery/test_forge_evidence_publish.py'
       - '.github/workflows/angels-forge-real-local-coding.yml'
   schedule:
     # Synthetic, zero-authority acceptance on standard public-repo runners.
