@@ -3,7 +3,7 @@
 name: ANGELS Hermes Real Free Inference Smoke
 on:
   push:
-    branches: [lab/hermes-free-model-20261009]
+    branches: [lab/hermes-cloud-only-verification-20261009]
     paths: [.github/workflows/angels-hermes-real-free-smoke.yml]
 permissions: {}
 concurrency:
@@ -24,6 +24,12 @@ jobs:
           test ! -e .git
           test ! -e "$HOME/.hermes"
           test ! -e /srv/angels-foundation-v1
+          test "${RUNNER_OS}" = "Linux"
+          test "${GITHUB_ACTIONS}" = "true"
+          test "${RUNNER_ENVIRONMENT}" = "github-hosted"
+          test -z "${ANGELS_HERMES_PAID_OPENROUTER_KEY:-}"
+          echo 'ANGELS_FOUNDER_LAPTOP_USED=false'
+          echo 'ANGELS_HERMES_CLOUD_WORKER_ROLE=disposable-cloud-worker'
           echo 'ISOLATED_STANDARD_PUBLIC_RUNNER=true'
           echo 'PRODUCTION_AUTHORITY=false'
           echo 'GITHUB_REPOSITORY_SOURCE_CHECKED_OUT=false'
@@ -99,6 +105,7 @@ jobs:
         shell: bash
         run: |
           echo 'ONE_SHOT_PUBLIC_RUNNER_ONLY=true'
+          echo 'LAPTOP_COMPUTE=false'
           echo 'CONTINUOUS_24X7=false'
           echo 'ANGELS_PRODUCTION_AUTHORITY=false'
           echo 'PERMANENT_HERMES_INSTALL=false'
