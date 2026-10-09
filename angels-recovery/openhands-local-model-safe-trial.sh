@@ -60,7 +60,23 @@ timeout 850 openhands --headless --json --override-with-envs --exit-without-conf
 agent_status=$?
 set -e
 echo "ANGELS_OPENHANDS_AGENT_EXIT=$agent_status"
-test -f "$WORK/gate_verify.py" || { echo "AGENT_DID_NOT_CREATE_FILE";grep -E 'LLMBadRequestError|LLMAuthenticationError|LLMError|RuntimeError|ValueError|Traceback|Error:' "$WORK/agent.log" | head -n 6 | cut -c1-1900 || true;exit 4; }
+if test ! -f "$WORK/gate_verify.py"; then
+  echo "AGENT_DID_NOT_CREATE_FILE"
+  echo "ANGELS_SYNTHETIC_AGENT_DIAGNOSTICS_BEGIN"
+  python3 - <<'PY'
+from pathlib import Path
+import json,re,os
+p=Path(os.environ["WORK"])/"agent.log"
+data=p.read_text(errors="replace") if p.exists() else "NO_LOG"
+print("AGENT_LOG_LENGTH="+str(len(data)))
+for line in data.splitlines()[-80:]:
+ line=re.sub(r'(?i)(api[_-]?key|authorization|token|password)(["\\s:=]+)[^\\s,}"]+', r'\\1\\2[REDACTED]', line)
+ print(line[:600])
+print("WORK_FILES="+json.dumps(sorted(x.name for x in Path(os.environ["WORK"]).iterdir())))
+PY
+  echo "ANGELS_SYNTHETIC_AGENT_DIAGNOSTICS_END"
+  exit 4
+fi
 python3 - <<'PY'
 import json,pathlib,subprocess,sys,hashlib
 root=pathlib.Path.cwd()
