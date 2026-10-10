@@ -16,7 +16,7 @@ jobs:
   real-hermes-smoke:
     if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
     runs-on: ubuntu-latest
-    timeout-minutes: 28
+    timeout-minutes: 30
     env:
       CI: 'true'
       HERMES_STREAM_READ_TIMEOUT: '300'
@@ -42,11 +42,11 @@ jobs:
             if curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
             sleep 2
           done
-          timeout 440 docker exec angels-hermes-ollama ollama pull qwen3:0.6b >/dev/null
-          printf 'FROM qwen3:0.6b\nPARAMETER num_ctx 65536\nPARAMETER temperature 0.1\n' > /tmp/angels-Modelfile
+          timeout 440 docker exec angels-hermes-ollama ollama pull qwen3:4b-instruct >/dev/null
+          printf 'FROM qwen3:4b-instruct\nPARAMETER num_ctx 65536\nPARAMETER temperature 0.1\n' > /tmp/angels-Modelfile
           docker cp /tmp/angels-Modelfile angels-hermes-ollama:/tmp/angels-Modelfile
-          timeout 180 docker exec angels-hermes-ollama ollama create angels-hermes-64k -f /tmp/angels-Modelfile >/dev/null
-          curl -fsS http://127.0.0.1:11434/api/tags | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(x.get("name","").startswith("angels-hermes-64k") for x in d["models"])'
+          timeout 180 docker exec angels-hermes-ollama ollama create angels-hermes-4b-64k -f /tmp/angels-Modelfile >/dev/null
+          curl -fsS http://127.0.0.1:11434/api/tags | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(x.get("name","").startswith("angels-hermes-4b-64k") for x in d["models"])'
           echo 'LOCAL_FREE_OLLAMA_MODEL_READY=YES'
       - name: Install original Nous Hermes in an isolated no-secrets environment
         shell: bash
@@ -64,13 +64,13 @@ jobs:
           mkdir -p "$HOME/.hermes" hermes-cloud-evidence
           cat > "$HOME/.hermes/config.yaml" <<'CONFIG'
           model:
-            default: angels-hermes-64k
+            default: angels-hermes-4b-64k
             provider: custom
             base_url: http://127.0.0.1:11434/v1
             context_length: 65536
           CONFIG
           set +e
-          timeout 480 "$HOME/.local/bin/hermes" -z "Reply with the exact token ANGELS_REAL_HERMES_EPHEMERAL_OK_20261010 and nothing else." >hermes-cloud-evidence/transcript.log 2>&1
+          timeout 600 "$HOME/.local/bin/hermes" -z "Reply with the exact token ANGELS_REAL_HERMES_EPHEMERAL_OK_20261010 and nothing else." >hermes-cloud-evidence/transcript.log 2>&1
           status=$?
           set -e
           echo "HERMES_EXIT_CODE=$status"
