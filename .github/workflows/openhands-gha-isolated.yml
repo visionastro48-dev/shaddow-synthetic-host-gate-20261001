@@ -103,3 +103,25 @@ jobs:
           print("SCOPE=SYNTHETIC_ONLY;ORIGINAL_ANGELS_WORKER_AUTH=NOT_TESTED")
           PY
           timeout 700s python3 /tmp/angels-openhands-disposable/smoke.py
+      - name: Authenticated local mock-Gateway mission, durable ACK and two process restarts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE=https://raw.githubusercontent.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/9669c3f6bba70480ab2d4921ca13b3475f8bd64d/experiments
+          curl --retry 2 -fsSL "$BASE/openhands_mock_gateway_recovery.py" -o /tmp/openhands_mock_gateway_recovery.py
+          test "$(git hash-object /tmp/openhands_mock_gateway_recovery.py)" = 392fe26041d2ddde355ae2918fbb7729e3d44820
+          python3 /tmp/openhands_mock_gateway_recovery.py
+      - name: Read-only original ANGELS Gateway network and authorization probe
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -Eeuo pipefail
+          BASE=https://angels-workspace-fabric.agentify-cloudflare-public-read.workers.dev
+          code="$(curl --silent --show-error --max-time 15 -o /tmp/original-gateway-health.json -w '%{http_code}' "$BASE/health")"
+          denial="$(curl --silent --show-error --max-time 15 -o /tmp/original-gateway-denial.json -w '%{http_code}' "$BASE/messages?to_agent_id=synthetic_openhands_01&project_id=synthetic_isolated")"
+          echo "ORIGINAL_GATEWAY_HEALTH_HTTP=$code"
+          echo "ORIGINAL_GATEWAY_UNAUTHENTICATED_MESSAGES_HTTP=$denial"
+          test "$code" = 200
+          test "$denial" = 401
+          echo "ORIGINAL_GATEWAY_REACHABLE=PASS; AUTHENTIC_ANGELS_MODULE_TOKEN=NOT_ISSUED"
+
