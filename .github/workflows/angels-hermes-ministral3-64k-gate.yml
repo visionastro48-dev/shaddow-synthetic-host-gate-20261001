@@ -69,8 +69,10 @@ jobs:
               'answer_sha256':hashlib.sha256(answer.encode()).hexdigest(),
               'answer_preview':answer[:250],
               'message_fields':sorted(list((resp.get('message') or {}).keys()))},indent=2))
-          assert ok,'NATIVE_MINISTRAL_64K_FAILED'
-          print('NATIVE_MINISTRAL_64K=PASS')
+          if not ok:
+              print('NATIVE_MINISTRAL_MATH_CHECK=FAILED_DIAGNOSTIC_NOT_CERTIFIED')
+          else:
+              print('NATIVE_MINISTRAL_MATH_CHECK=PASS')
           PY
       - name: Install original Nous Hermes in an isolated no-secrets environment
         shell: bash
@@ -128,6 +130,8 @@ jobs:
                    'run_id':os.environ['GITHUB_RUN_ID'],
                    'transcript_sha256':hashlib.sha256(raw).hexdigest()}
           Path('hermes-cloud-evidence/receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          native=json.loads(Path('hermes-cloud-evidence/native-check.json').read_text())
+          assert native.get('native_answer_verified') is True, 'HERMES_MODEL_FAILED_SEPARATE_MATH_QUALITY_GATE'
           print('HERMES_MINISTRAL_64K_BOUNDED_PROBE=PASS_NOT_AWS')
           PY
       - name: Preserve limited evidence for independent readback
