@@ -1,0 +1,148 @@
+# Actual Hermes Agent on disposable public cloud runner. No AWS authorization, secrets, or private code.
+name: ANGELS Hermes3 3B 64K Acceptance
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/angels-hermes3-3b-64k-gate.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: angels-hermes3-3b-64k
+  cancel-in-progress: false
+jobs:
+  real-hermes-smoke:
+    if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      CI: 'true'
+      HERMES_STREAM_READ_TIMEOUT: '300'
+    steps:
+      - name: Verify bounded public runner identity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+          test -z "${AWS_ACCESS_KEY_ID:-}"
+          test -z "${AWS_SECRET_ACCESS_KEY:-}"
+          test -z "${OPENROUTER_API_KEY:-}"
+          test -z "${OPENAI_API_KEY:-}"
+          echo 'PUBLIC_RUNNER_NO_PRODUCTION_CREDENTIALS=PASS'
+      - name: Start disposable free Ollama inference locally
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker run -d --rm --name angels-hermes-ollama -p 127.0.0.1:11434:11434 \
+            -e OLLAMA_NUM_PARALLEL=1 -e OLLAMA_CONTEXT_LENGTH=65536 \
+            -e OLLAMA_FLASH_ATTENTION=1 -e OLLAMA_KV_CACHE_TYPE=q8_0 \
+            ollama/ollama:0.11.10 >/dev/null
+          for i in $(seq 1 50); do
+            if curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 2
+          done
+          docker exec angels-hermes-ollama ollama --version
+          timeout 440 docker exec angels-hermes-ollama ollama pull hermes3:3b >/dev/null
+          printf 'FROM hermes3:3b\nPARAMETER num_ctx 65536\nPARAMETER num_predict 128\nPARAMETER temperature 0.0\n' > /tmp/angels-Modelfile
+          docker cp /tmp/angels-Modelfile angels-hermes-ollama:/tmp/angels-Modelfile
+          timeout 180 docker exec angels-hermes-ollama ollama create angels-hermes3b-64k -f /tmp/angels-Modelfile >/dev/null
+          curl -fsS http://127.0.0.1:11434/api/tags | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(x.get("name","").startswith("angels-hermes3b-64k") for x in d["models"])'
+          echo 'LOCAL_HERMES3_MODEL_READY=YES'
+      - name: Prove native IBM Granite inference before invoking Hermes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p hermes-cloud-evidence
+          timeout 240 python3 - <<'PY'
+          import json,urllib.request,time,hashlib,pathlib
+          reqbody=json.dumps({'model':'angels-hermes3b-64k','messages':[{'role':'user','content':'What is 19 plus 24? Reply with only the integer.'}],
+              'stream':False,'keep_alive':'12m','options':{'num_ctx':65536,'num_predict':64,'temperature':0}}).encode()
+          start=time.monotonic()
+          req=urllib.request.Request('http://127.0.0.1:11434/api/chat',data=reqbody,
+              headers={'Content-Type':'application/json'})
+          resp=json.load(urllib.request.urlopen(req,timeout=235))
+          answer=(resp.get('message') or {}).get('content','').strip()
+          ok=answer.rstrip('.')=='43'
+          pathlib.Path('hermes-cloud-evidence/native-check.json').write_text(json.dumps({
+              'native_answer_verified':ok,'hermes_answer_verified':False,
+              'elapsed_seconds':round(time.monotonic()-start,2),
+              'answer_sha256':hashlib.sha256(answer.encode()).hexdigest(),
+              'answer_preview':answer[:250],
+              'message_fields':sorted(list((resp.get('message') or {}).keys()))},indent=2))
+          if not ok:
+              print('NATIVE_HERMES3_MATH_CHECK=FAILED_DIAGNOSTIC_NOT_CERTIFIED')
+          else:
+              print('NATIVE_HERMES3_MATH_CHECK=PASS')
+          PY
+      - name: Install original Nous Hermes in an isolated no-secrets environment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL --max-time 30 https://hermes-agent.nousresearch.com/install.sh -o /tmp/hermes-official-install.sh
+          timeout 700 bash /tmp/hermes-official-install.sh --non-interactive --skip-browser --skip-computer-use
+          test -x "$HOME/.local/bin/hermes"
+          "$HOME/.local/bin/hermes" --version
+          echo 'REAL_HERMES_CLI_INSTALLED=YES'
+      - name: Invoke real Hermes CLI against local Ollama
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$HOME/.hermes" hermes-cloud-evidence
+          cat > "$HOME/.hermes/config.yaml" <<'CONFIG'
+          model:
+            default: angels-hermes3b-64k
+            provider: custom
+            base_url: http://127.0.0.1:11434/v1
+            context_length: 65536
+            ollama_num_ctx: 65536
+            max_tokens: 128
+          agent:
+            reasoning_effort: none
+            tool_use_enforcement: false
+            disabled_toolsets: [browser, web]
+          CONFIG
+          set +e
+          timeout 330 "$HOME/.local/bin/hermes" -z "Reverse the uppercase five-letter word ANGEL. Respond with only the five reversed letters." >hermes-cloud-evidence/transcript.log 2>&1
+          status=$?
+          set -e
+          echo "HERMES_EXIT_CODE=$status"
+          if [ "$status" -ne 0 ]; then
+            tail -c 1400 hermes-cloud-evidence/transcript.log || true
+            exit "$status"
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json,os
+          p=Path('hermes-cloud-evidence/transcript.log')
+          raw=p.read_bytes()
+          valid=bool(raw) and len(raw)<=65536 and any(line.strip()==b'LEGNA' for line in raw.splitlines())
+          if not valid:
+              raise SystemExit('FAIL: Hermes did not return five reversed letters')
+          receipt={'schema':'angels.hermes-ephemeral/v1',
+                   'scope':'SYNTHETIC_ONLY',
+                   'runner':'github-public-disposable',
+                   'real_hermes_cli_exited_zero':True,
+                   'independently_computed_answer_verified':True,
+                   'response_authorship_independently_verified':False,
+                   'aws_host_execution':False,
+                   'production_authority':False,
+                   'always_on_24x7':False,
+                   'run_id':os.environ['GITHUB_RUN_ID'],
+                   'transcript_sha256':hashlib.sha256(raw).hexdigest()}
+          Path('hermes-cloud-evidence/receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          native=json.loads(Path('hermes-cloud-evidence/native-check.json').read_text())
+          assert native.get('native_answer_verified') is True, 'HERMES_MODEL_FAILED_SEPARATE_MATH_QUALITY_GATE'
+          print('HERMES_HERMES3_64K_BOUNDED_PROBE=PASS_NOT_AWS')
+          PY
+      - name: Preserve limited evidence for independent readback
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hermes-cloud-synthetic-receipt
+          path: hermes-cloud-evidence/
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Destroy disposable model runtime
+        if: always()
+        shell: bash
+        run: docker rm -f angels-hermes-ollama >/dev/null 2>&1 || true
