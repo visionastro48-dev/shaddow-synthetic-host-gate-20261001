@@ -1,0 +1,114 @@
+# Actual Hermes Agent on disposable public cloud runner. No AWS authorization, secrets, or private code.
+name: ANGELS Real Hermes Ephemeral Cloud Probe
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/angels-hermes-ephemeral-cloud.yml']
+  workflow_dispatch:
+  schedule:
+    - cron: '29 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: angels-hermes-ephemeral-cloud
+  cancel-in-progress: false
+jobs:
+  real-hermes-smoke:
+    if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      CI: 'true'
+      HERMES_STREAM_READ_TIMEOUT: '300'
+    steps:
+      - name: Verify bounded public runner identity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+          test -z "${AWS_ACCESS_KEY_ID:-}"
+          test -z "${AWS_SECRET_ACCESS_KEY:-}"
+          test -z "${OPENROUTER_API_KEY:-}"
+          test -z "${OPENAI_API_KEY:-}"
+          echo 'PUBLIC_RUNNER_NO_PRODUCTION_CREDENTIALS=PASS'
+      - name: Start disposable free Ollama inference locally
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker run -d --rm --name angels-hermes-ollama -p 127.0.0.1:11434:11434 \
+            -e OLLAMA_NUM_PARALLEL=1 -e OLLAMA_CONTEXT_LENGTH=65536 \
+            ollama/ollama:0.11.10 >/dev/null
+          for i in $(seq 1 50); do
+            if curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 2
+          done
+          timeout 440 docker exec angels-hermes-ollama ollama pull qwen3:0.6b >/dev/null
+          printf 'FROM qwen3:0.6b\nPARAMETER num_ctx 65536\nPARAMETER temperature 0.1\n' > /tmp/angels-Modelfile
+          docker cp /tmp/angels-Modelfile angels-hermes-ollama:/tmp/angels-Modelfile
+          timeout 180 docker exec angels-hermes-ollama ollama create angels-hermes-64k -f /tmp/angels-Modelfile >/dev/null
+          curl -fsS http://127.0.0.1:11434/api/tags | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(x.get("name","").startswith("angels-hermes-64k") for x in d["models"])'
+          echo 'LOCAL_FREE_OLLAMA_MODEL_READY=YES'
+      - name: Install original Nous Hermes in an isolated no-secrets environment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL --max-time 30 https://hermes-agent.nousresearch.com/install.sh -o /tmp/hermes-official-install.sh
+          timeout 700 bash /tmp/hermes-official-install.sh --non-interactive --skip-browser --skip-computer-use
+          test -x "$HOME/.local/bin/hermes"
+          "$HOME/.local/bin/hermes" --version
+          echo 'REAL_HERMES_CLI_INSTALLED=YES'
+      - name: Invoke real Hermes CLI against local Ollama
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$HOME/.hermes" hermes-cloud-evidence
+          cat > "$HOME/.hermes/config.yaml" <<'CONFIG'
+          model:
+            default: angels-hermes-64k
+            provider: custom
+            base_url: http://127.0.0.1:11434/v1
+            context_length: 65536
+          CONFIG
+          set +e
+          timeout 480 "$HOME/.local/bin/hermes" -z "Reply with the exact token ANGELS_REAL_HERMES_EPHEMERAL_OK_20261010 and nothing else." >hermes-cloud-evidence/transcript.log 2>&1
+          status=$?
+          set -e
+          echo "HERMES_EXIT_CODE=$status"
+          if [ "$status" -ne 0 ]; then
+            tail -c 1400 hermes-cloud-evidence/transcript.log || true
+            exit "$status"
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json,os
+          p=Path('hermes-cloud-evidence/transcript.log')
+          raw=p.read_bytes()
+          marker=b'ANGELS_REAL_HERMES_EPHEMERAL_OK_20261010'
+          if not raw or len(raw)>65536 or marker not in raw:
+              raise SystemExit('FAIL: no bounded Hermes transcript marker')
+          receipt={'schema':'angels.hermes-ephemeral/v1',
+                   'scope':'SYNTHETIC_ONLY',
+                   'runner':'github-public-disposable',
+                   'real_hermes_cli_exited_zero':True,
+                   'transcript_contains_marker':True,
+                   'response_authorship_independently_verified':False,
+                   'aws_host_execution':False,
+                   'production_authority':False,
+                   'always_on_24x7':False,
+                   'run_id':os.environ['GITHUB_RUN_ID'],
+                   'transcript_sha256':hashlib.sha256(raw).hexdigest()}
+          Path('hermes-cloud-evidence/receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          print('HERMES_REAL_CLI_BOUNDED_PROBE=PASS_NOT_AWS')
+          PY
+      - name: Preserve limited evidence for independent readback
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hermes-cloud-synthetic-receipt
+          path: hermes-cloud-evidence/
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Destroy disposable model runtime
+        if: always()
+        shell: bash
+        run: docker rm -f angels-hermes-ollama >/dev/null 2>&1 || true
