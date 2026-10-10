@@ -83,11 +83,11 @@ jobs:
               system_prompt="You are an isolated disposable coding agent. Modify files ONLY in the task workspace. Do not use the network. Do not access tokens, other projects or credentials. Use a terminal tool, observe results, then finish.",
           )
           conv = Conversation(agent=agent, workspace=str(path),
-              max_iteration_per_run=4, visualizer=None,
+              max_iteration_per_run=7, visualizer=None,
               callbacks=[lambda e: print('SDK_EVENT', type(e).__name__, str(e)[:200], flush=True)],
               persistence_dir="/tmp/angels-openhands-disposable/receipts")
           try:
-              conv.send_message("Create hello_angels.sh with exactly these two lines: #!/usr/bin/env bash then echo OPENHANDS_ANGELS_TASK_OK. Next execute bash hello_angels.sh in the terminal. Finally finish.")
+              conv.send_message("Use your terminal tool to create hello_angels.sh with EXACTLY two UTF-8 newline-terminated lines. Line 1 must be: #!/usr/bin/env bash . Line 2 must be: echo OPENHANDS_ANGELS_TASK_OK . Do not include the word 'then' in the file. Suggested creation command: printf '%s\\n' '#!/usr/bin/env bash' 'echo OPENHANDS_ANGELS_TASK_OK' > hello_angels.sh . Next execute bash hello_angels.sh. If the script errors, inspect the file contents, repair the script, rerun it, and finish.")
               conv.run()
           finally:
               conv.close()
