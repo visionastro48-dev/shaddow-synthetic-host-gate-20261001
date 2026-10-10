@@ -60,8 +60,8 @@ jobs:
           GENERIC NON-PRODUCTION LEASE POLICY ENGINEERING. Mission: lease_recovery_20261010_001.
           Use the terminal tool to create lease/lease_policy.py, not merely describe code.
           No accounts, secrets, deployments, external messages or external actions. Work only in this disposable workspace.
-          Before implementing, use a tool to write acknowledgment.json containing mission_id "lease_recovery_20261010_001", accepted true, and an ISO UTC accepted_at. This is acceptance of this bounded coding task only.
-          Implement classify_job(job, now_epoch) -> str and can_claim(job, now_epoch, expected_generation) -> bool.
+          Before implementing, use a tool to write acknowledgment.json containing mission_id "lease_recovery_20261010_001", accepted true, and an ISO UTC accepted_at obtained by executing datetime.datetime.now(datetime.timezone.utc).isoformat() in Python on this machine. NEVER hardcode a date. This is acceptance of this bounded coding task only.
+          Implement classify_job(job, now_epoch) -> str and can_claim(job, now_epoch, expected_generation) -> bool. The input state field is exactly job['state'], NEVER job_state. For example classify_job({'job_id':'a','authorized':True,'generation':7,'state':'PENDING'},100) MUST return READY.
           Input must be a dict with authorized exactly True; job_id nonblank string; generation exact int (not bool), nonnegative; now_epoch exact int nonnegative. Invalid -> BLOCKED.
           PENDING -> READY. FAILED -> REPAIR.
           COMPLETED -> DONE only when verification is a dict with passed exactly True, verifier_id a nonblank str, executor_id a nonblank str different from verifier_id, evidence_sha256 a string of exactly 64 lowercase hexadecimal characters. Otherwise VERIFYING.
@@ -69,7 +69,7 @@ jobs:
           CANCELLED -> CANCELLED only when stop_confirmed exactly True; otherwise STOPPING.
           Unknown states -> BLOCKED.
           can_claim True only when expected_generation exact int nonnegative equals generation AND classify_job is READY or RECOVER; otherwise False.
-          Keep each tool call small: write acknowledgment first, then classify_job, then can_claim in separate tool calls if needed. No imports besides stdlib. Do not read or modify other files. Actually write the module using tools and run python3 -m py_compile lease/lease_policy.py.
+          Previous attempt wrote code but FAILED independent acceptance: it used job_state instead of state, admitted boolean timestamps, treated whitespace-only identities as nonblank, and allowed missing lease deadlines. Fix all those defects. Use type(x) is int to exclude bool; use text.strip() for nonblank IDs; require all(c in '0123456789abcdef' for c in digest), not int(digest,16) alone. Missing or invalid lease_expires_at MUST be BLOCKED. Keep each tool call small: write acknowledgment first, then classify_job, then can_claim in separate tool calls if needed. No imports besides stdlib. Do not read or modify other files. Actually write the module using tools and run python3 -m py_compile lease/lease_policy.py.
           Your final response must identify the task and output path. No claim of production deployment or organizational enrollment.
           PROMPT
           cd "$RUNNER_TEMP/lease-workspace"
@@ -98,7 +98,10 @@ jobs:
           root=pathlib.Path(os.environ['RUNNER_TEMP'])/'lease-workspace'
           ack=json.loads((root/'acknowledgment.json').read_text())
           assert ack['mission_id']=='lease_recovery_20261010_001' and ack['accepted'] is True
-          datetime.datetime.fromisoformat(ack['accepted_at'].replace('Z','+00:00'))
+          accepted_at=datetime.datetime.fromisoformat(ack['accepted_at'].replace('Z','+00:00'))
+          assert accepted_at.tzinfo is not None
+          age=(datetime.datetime.now(datetime.timezone.utc)-accepted_at).total_seconds()
+          assert 0<=age<=360, ('invalid receipt clock',age)
           path=root/'lease/lease_policy.py'
           s=importlib.util.spec_from_file_location('policy',path)
           m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
