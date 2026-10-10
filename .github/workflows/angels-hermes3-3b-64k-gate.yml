@@ -97,7 +97,7 @@ jobs:
             ollama_num_ctx: 65536
             max_tokens: 128
           agent:
-            reasoning_effort: none
+            reasoning_effort: low
             tool_use_enforcement: false
             disabled_toolsets: [browser, web]
           CONFIG
