@@ -1,0 +1,112 @@
+name: ANGELS isolated OpenHands non-production acceptance
+on:
+  pull_request:
+    paths:
+      - .github/workflows/openhands-gha-isolated.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-openhands-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  original-source-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch pinned public ANGELS contract source without credentials
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/angels-source
+          BASE=https://raw.githubusercontent.com/visionastro48-dev/angels-workspace-fabric/91df83a3ae1a4a6b9bdaf93c10b0be5bddd07711/integrations/openhands
+          curl --retry 2 -fsSL "$BASE/agent-sdk-task.py" -o /tmp/angels-source/agent-sdk-task.py
+          curl --retry 2 -fsSL "$BASE/test-agent-sdk-task.py" -o /tmp/angels-source/test-agent-sdk-task.py
+          test "$(git hash-object /tmp/angels-source/agent-sdk-task.py)" = dbefbee910d77e3d9a48a3278515a581d7ce5f69
+          test "$(git hash-object /tmp/angels-source/test-agent-sdk-task.py)" = 1681d2af401a06a3b131e44aec0f2b9b045f335a
+          echo "ORIGINAL_ANGELS_BLOB_HASHES=PASS"
+      - name: Independent safety contract tests (no company credentials)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          unset ANGELS_MODULE_TOKEN ANGELS_GATEWAY_URL OPENAI_API_KEY ANTHROPIC_API_KEY OPENROUTER_API_KEY GH_TOKEN GITHUB_TOKEN
+          python3 /tmp/angels-source/test-agent-sdk-task.py
+          echo "CONTRACT_REGRESSION_ACCEPTED"
+
+  disposable-real-openhands:
+    needs: original-source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - name: Install pinned OpenHands SDK and tools on disposable runner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --disable-pip-version-check --no-cache-dir 'openhands-sdk==1.27.0' 'openhands-tools==1.27.0'
+          python3 -c 'import openhands.sdk; from openhands.tools.terminal import TerminalTool; print("OPENHANDS_SDK_IMPORT=PASS")'
+      - name: Start local Ollama with CPU model only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL https://ollama.com/install.sh -o /tmp/ollama-install.sh
+          sh /tmp/ollama-install.sh
+          ollama serve > /tmp/angels-ollama.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen2.5-coder:1.5b
+          echo "LOCAL_ONLY_MODEL_READY"
+      - name: Real OpenHands agent tool action and independent artifact verification
+        shell: bash
+        env:
+          OPENHANDS_SUPPRESS_BANNER: "1"
+          ALLOW_SHORT_CONTEXT_WINDOWS: "true"
+        run: |
+          set -Eeuo pipefail
+          unset ANGELS_MODULE_TOKEN ANGELS_GATEWAY_URL OPENAI_API_KEY ANTHROPIC_API_KEY OPENROUTER_API_KEY GH_TOKEN GITHUB_TOKEN
+          mkdir -p /tmp/angels-openhands-disposable
+          cat > /tmp/angels-openhands-disposable/smoke.py <<'PY'
+          import hashlib, os, pathlib, subprocess
+          from openhands.sdk import Agent, LLM, Conversation
+          from openhands.tools.terminal import TerminalTool
+          from openhands.sdk.tool.registry import register_tool
+          register_tool("TerminalTool", TerminalTool)
+          path = pathlib.Path("/tmp/angels-openhands-disposable/task")
+          path.mkdir(parents=True, exist_ok=True)
+          model = LLM(
+              model="ollama_chat/qwen2.5-coder:1.5b", base_url="http://127.0.0.1:11434",
+              api_key="local", temperature=0, max_input_tokens=8192,
+              max_output_tokens=350, timeout=180, num_retries=0,
+              litellm_extra_body={"think": False},
+          )
+          agent = Agent(
+              llm=model,
+              tools=[{"name": "TerminalTool", "params": {"terminal_type": "subprocess"}}],
+              include_default_tools=["FinishTool"],
+              system_prompt="You are an isolated disposable coding agent. Modify files ONLY in the task workspace. Do not use the network. Do not access tokens, other projects or credentials. Use a terminal tool, observe results, then finish.",
+          )
+          conv = Conversation(agent=agent, workspace=str(path),
+              max_iteration_per_run=5, visualizer=None,
+              persistence_dir="/tmp/angels-openhands-disposable/receipts")
+          try:
+              conv.send_message("Using your terminal tool, create hello_angels.sh in your assigned workspace containing exactly two lines: #!/usr/bin/env bash and echo OPENHANDS_ANGELS_TASK_OK. Then use the terminal tool to execute bash hello_angels.sh and finish.")
+              conv.run()
+          finally:
+              conv.close()
+          artifact = path / "hello_angels.sh"
+          assert artifact.is_file(), "AGENT_FILE_MISSING"
+          data = artifact.read_bytes()
+          expected = b"#!/usr/bin/env bash\necho OPENHANDS_ANGELS_TASK_OK\n"
+          assert data == expected, f"AGENT_FILE_BYTES_MISMATCH: {data[:200]!r}"
+          out = subprocess.run(["bash", str(artifact)], text=True, capture_output=True, timeout=10)
+          assert out.returncode == 0 and out.stdout == "OPENHANDS_ANGELS_TASK_OK\n", f"FAILED_OUTPUT: {out.returncode} {out.stdout!r} {out.stderr!r}"
+          print("OPENHANDS_SDK_REAL_AGENT_AND_INDEPENDENT_VERIFIER=PASS")
+          print("ARTIFACT_SHA256=" + hashlib.sha256(data).hexdigest())
+          print("SCOPE=SYNTHETIC_ONLY;ORIGINAL_ANGELS_WORKER_AUTH=NOT_TESTED")
+          PY
+          timeout 700s python3 /tmp/angels-openhands-disposable/smoke.py
