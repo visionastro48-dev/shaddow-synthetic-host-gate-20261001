@@ -14,7 +14,7 @@ jobs:
   real-hermes-smoke:
     if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
     runs-on: ubuntu-latest
-    timeout-minutes: 27
+    timeout-minutes: 28
     env:
       CI: 'true'
       HERMES_STREAM_READ_TIMEOUT: '300'
@@ -47,25 +47,26 @@ jobs:
           timeout 180 docker exec angels-hermes-ollama ollama create angels-granite2b-64k -f /tmp/angels-Modelfile >/dev/null
           curl -fsS http://127.0.0.1:11434/api/tags | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(x.get("name","").startswith("angels-granite2b-64k") for x in d["models"])'
           echo 'LOCAL_GRANITE_MODEL_READY=YES'
-      - name: Validate native Granite 64K response before Hermes
+      - name: Prove native IBM Granite inference before invoking Hermes
         shell: bash
         run: |
           set -Eeuo pipefail
           mkdir -p hermes-cloud-evidence
           timeout 240 python3 - <<'PY'
           import json,urllib.request,time,hashlib,pathlib
-          body=json.dumps({'model':'angels-granite2b-64k','messages':[{'role':'user','content':'What is 19 plus 24? Reply with only the integer.'}],
+          reqbody=json.dumps({'model':'angels-granite2b-64k','messages':[{'role':'user','content':'What is 19 plus 24? Reply with only the integer.'}],
               'stream':False,'keep_alive':'12m','options':{'num_ctx':65536,'num_predict':64,'temperature':0}}).encode()
           start=time.monotonic()
-          req=urllib.request.Request('http://127.0.0.1:11434/api/chat',data=body,
+          req=urllib.request.Request('http://127.0.0.1:11434/api/chat',data=reqbody,
               headers={'Content-Type':'application/json'})
-          response=json.load(urllib.request.urlopen(req,timeout=235))
-          answer=(response.get('message') or {}).get('content','').strip()
-          passed=answer.rstrip('.')=='43'
+          resp=json.load(urllib.request.urlopen(req,timeout=235))
+          answer=(resp.get('message') or {}).get('content','').strip()
+          ok=answer.rstrip('.')=='43'
           pathlib.Path('hermes-cloud-evidence/native-check.json').write_text(json.dumps({
-              'native_answer_verified':passed,'is_hermes':False,'elapsed_seconds':round(time.monotonic()-start,2),
-              'answer_sha256':hashlib.sha256(answer.encode()).hexdigest()},indent=2)+'\n')
-          assert passed,'NATIVE_GRANITE_64K_FAILED'
+              'native_answer_verified':ok,'hermes_answer_verified':False,
+              'elapsed_seconds':round(time.monotonic()-start,2),
+              'answer_sha256':hashlib.sha256(answer.encode()).hexdigest()},indent=2))
+          assert ok,'NATIVE_GRANITE_64K_FAILED'
           print('NATIVE_GRANITE_64K=PASS')
           PY
       - name: Install original Nous Hermes in an isolated no-secrets environment
@@ -96,7 +97,7 @@ jobs:
             disabled_toolsets: [browser, web]
           CONFIG
           set +e
-          timeout 360 "$HOME/.local/bin/hermes" -z "Reverse the uppercase five-letter word ANGEL. Respond with only the five reversed letters." >hermes-cloud-evidence/transcript.log 2>&1
+          timeout 330 "$HOME/.local/bin/hermes" -z "Reverse the uppercase five-letter word ANGEL. Respond with only the five reversed letters." >hermes-cloud-evidence/transcript.log 2>&1
           status=$?
           set -e
           echo "HERMES_EXIT_CODE=$status"
@@ -109,14 +110,14 @@ jobs:
           import hashlib,json,os
           p=Path('hermes-cloud-evidence/transcript.log')
           raw=p.read_bytes()
-          marker=b'LEGNA'
-          if not raw or len(raw)>65536 or not __import__('re').search(rb'(?m)^\s*LEGNA\s*
-              raise SystemExit('FAIL: no bounded Hermes transcript marker')
+          valid=bool(raw) and len(raw)<=65536 and any(line.strip()==b'LEGNA' for line in raw.splitlines())
+          if not valid:
+              raise SystemExit('FAIL: Hermes did not return five reversed letters')
           receipt={'schema':'angels.hermes-ephemeral/v1',
                    'scope':'SYNTHETIC_ONLY',
                    'runner':'github-public-disposable',
                    'real_hermes_cli_exited_zero':True,
-                   'transcript_contains_marker':True,
+                   'independently_computed_answer_verified':True,
                    'response_authorship_independently_verified':False,
                    'aws_host_execution':False,
                    'production_authority':False,
@@ -125,34 +126,6 @@ jobs:
                    'transcript_sha256':hashlib.sha256(raw).hexdigest()}
           Path('hermes-cloud-evidence/receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
           print('HERMES_GRANITE_64K_BOUNDED_PROBE=PASS_NOT_AWS')
-          PY
-      - name: Preserve limited evidence for independent readback
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: hermes-cloud-synthetic-receipt
-          path: hermes-cloud-evidence/
-          if-no-files-found: ignore
-          retention-days: 3
-      - name: Destroy disposable model runtime
-        if: always()
-        shell: bash
-        run: docker rm -f angels-hermes-ollama >/dev/null 2>&1 || true
-,raw):
-              raise SystemExit('FAIL: no bounded Hermes transcript marker')
-          receipt={'schema':'angels.hermes-ephemeral/v1',
-                   'scope':'SYNTHETIC_ONLY',
-                   'runner':'github-public-disposable',
-                   'real_hermes_cli_exited_zero':True,
-                   'transcript_contains_marker':True,
-                   'response_authorship_independently_verified':False,
-                   'aws_host_execution':False,
-                   'production_authority':False,
-                   'always_on_24x7':False,
-                   'run_id':os.environ['GITHUB_RUN_ID'],
-                   'transcript_sha256':hashlib.sha256(raw).hexdigest()}
-          Path('hermes-cloud-evidence/receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
-          print('HERMES_REAL_CLI_BOUNDED_PROBE=PASS_NOT_AWS')
           PY
       - name: Preserve limited evidence for independent readback
         if: always()
