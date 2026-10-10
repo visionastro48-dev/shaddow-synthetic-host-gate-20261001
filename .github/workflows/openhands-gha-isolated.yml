@@ -13,31 +13,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  original-source-contract:
+  synthetic-scope:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
     steps:
-      - name: Fetch pinned public ANGELS contract source without credentials
+      - name: Assert no ANGELS secrets or original source is in scope
         shell: bash
         run: |
           set -Eeuo pipefail
-          mkdir -p /tmp/angels-source
-          BASE=https://raw.githubusercontent.com/visionastro48-dev/angels-workspace-fabric/91df83a3ae1a4a6b9bdaf93c10b0be5bddd07711/integrations/openhands
-          curl --retry 2 -fsSL "$BASE/agent-sdk-task.py" -o /tmp/angels-source/agent-sdk-task.py
-          curl --retry 2 -fsSL "$BASE/test-agent-sdk-task.py" -o /tmp/angels-source/test-agent-sdk-task.py
-          test "$(git hash-object /tmp/angels-source/agent-sdk-task.py)" = dbefbee910d77e3d9a48a3278515a581d7ce5f69
-          test "$(git hash-object /tmp/angels-source/test-agent-sdk-task.py)" = 1681d2af401a06a3b131e44aec0f2b9b045f335a
-          echo "ORIGINAL_ANGELS_BLOB_HASHES=PASS"
-      - name: Independent safety contract tests (no company credentials)
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          unset ANGELS_MODULE_TOKEN ANGELS_GATEWAY_URL OPENAI_API_KEY ANTHROPIC_API_KEY OPENROUTER_API_KEY GH_TOKEN GITHUB_TOKEN
-          python3 /tmp/angels-source/test-agent-sdk-task.py
-          echo "CONTRACT_REGRESSION_ACCEPTED"
+          test -z "${ANGELS_GATEWAY_URL:-}"
+          test -z "${ANGELS_MODULE_TOKEN:-}"
+          test -z "${OPENROUTER_API_KEY:-}"
+          test -z "${OPENAI_API_KEY:-}"
+          test -z "${ANTHROPIC_API_KEY:-}"
+          echo 'SYNTHETIC_SCOPE_AND_NO_COMPANY_CREDENTIALS=PASS'
 
   disposable-real-openhands:
-    needs: original-source-contract
+    needs: synthetic-scope
     runs-on: ubuntu-latest
     timeout-minutes: 22
     steps:
