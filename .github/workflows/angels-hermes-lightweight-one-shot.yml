@@ -1,0 +1,142 @@
+# Experimental official Nous Hermes minimal one-query runner, on existing ephemeral GitHub cloud.
+# NOT AWS access, not production worker, no private source, no new spending.
+name: ANGELS Hermes Lightweight One Shot
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/angels-hermes-lightweight-one-shot.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: angels-hermes-lightweight-one-shot
+  cancel-in-progress: false
+jobs:
+  lightweight-one-shot:
+    if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      CI: 'true'
+      HERMES_STREAM_READ_TIMEOUT: '180'
+    steps:
+      - name: Confirm disposable no-production-credential carrier
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+          test -z "$AWS_ACCESS_KEY_ID"
+          test -z "$OPENROUTER_API_KEY"
+          test -z "$OPENAI_API_KEY"
+          test -z "$CLOUDFLARE_API_TOKEN"
+          echo 'NO_PRODUCTION_CREDENTIALS=PASS'
+      - name: Start local 128K-capable Llama 3.2 3B model with 64K context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p lite-evidence
+          docker run -d --rm --name angels-lite-ollama -p 127.0.0.1:11434:11434 \
+            -e OLLAMA_NUM_PARALLEL=1 -e OLLAMA_CONTEXT_LENGTH=65536 \
+            -e OLLAMA_FLASH_ATTENTION=1 -e OLLAMA_KV_CACHE_TYPE=q8_0 \
+            ollama/ollama:0.11.10 >/dev/null
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 2
+          done
+          timeout 300 docker exec angels-lite-ollama ollama pull llama3.2:3b >/dev/null
+          printf 'FROM llama3.2:3b\nPARAMETER num_ctx 65536\nPARAMETER num_predict 96\nPARAMETER temperature 0\n' > /tmp/angels-lite-Modelfile
+          docker cp /tmp/angels-lite-Modelfile angels-lite-ollama:/tmp/angels-lite-Modelfile
+          timeout 100 docker exec angels-lite-ollama ollama create angels-lite-64k -f /tmp/angels-lite-Modelfile >/dev/null
+          echo 'LIGHTWEIGHT_MODEL_READY=YES'
+      - name: Check model answers real native synthetic task
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout 170 python3 - <<'PY'
+          import json,urllib.request,pathlib,time,hashlib
+          start=time.monotonic()
+          reqbody=json.dumps({'model':'angels-lite-64k',
+              'messages':[{'role':'user','content':'Reverse the word DOG and give only three uppercase letters.'}],
+              'stream':False,'options':{'num_ctx':65536,'num_predict':48,'temperature':0}}).encode()
+          req=urllib.request.Request('http://127.0.0.1:11434/api/chat',data=reqbody,
+              headers={'Content-Type':'application/json'})
+          obj=json.load(urllib.request.urlopen(req,timeout=165))
+          answer=((obj.get('message') or {}).get('content') or '').strip()
+          ok=answer=='GOD'
+          pathlib.Path('lite-evidence/native.json').write_text(json.dumps({
+            'result':'PASS' if ok else 'FAILED','is_hermes':False,
+            'elapsed_seconds':round(time.monotonic()-start,2),
+            'answer_preview':answer[:80],
+            'sha256':hashlib.sha256(answer.encode()).hexdigest()},indent=2))
+          assert ok,'NATIVE_LOCAL_MODEL_WRONG_ANSWER'
+          print('NATIVE_LOCAL_MODEL=PASS')
+          PY
+      - name: Install official Hermes command line without browser and computer use
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL --max-time 30 https://hermes-agent.nousresearch.com/install.sh -o /tmp/hermes-official-install.sh
+          timeout 600 bash /tmp/hermes-official-install.sh --non-interactive --skip-browser --skip-computer-use >lite-evidence/install.log 2>&1 || { tail -c 1500 lite-evidence/install.log; exit 1; }
+          test -x "$HOME/.local/bin/hermes-agent"
+          "$HOME/.local/bin/hermes-agent" --version
+          "$HOME/.local/bin/hermes-agent" --help >lite-evidence/legacy-help.txt
+          grep -q -- '--max-turns' lite-evidence/legacy-help.txt
+          grep -q -- '--base-url' lite-evidence/legacy-help.txt
+          echo 'OFFICIAL_MINIMAL_SINGLE_QUERY_RUNNER=READY'
+      - name: Invoke one-turn official lightweight Hermes agent
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$HOME/.hermes" lite-evidence
+          cat > "$HOME/.hermes/config.yaml" <<'CONFIG'
+          model:
+            default: angels-lite-64k
+            provider: custom
+            base_url: http://127.0.0.1:11434/v1
+            context_length: 65536
+          agent:
+            max_turns: 1
+            disabled_toolsets: [web, browser, skills, memory, mcp, delegation]
+          CONFIG
+          set +e
+          timeout 220 "$HOME/.local/bin/hermes-agent" --query "Reverse the uppercase word SUN. Respond with only the reversed three uppercase letters." \
+            --model angels-lite-64k --base-url http://127.0.0.1:11434/v1 --max-turns 1 \
+            >lite-evidence/hermes-out.txt 2>lite-evidence/hermes-err.txt
+          status=$?
+          set -e
+          echo "LIGHTWEIGHT_HERMES_EXIT=$status"
+          if [ "$status" -ne 0 ]; then
+            tail -c 1400 lite-evidence/hermes-err.txt || true
+            exit "$status"
+          fi
+          python3 - <<'PY'
+          import pathlib,json,re,hashlib,os
+          raw=pathlib.Path('lite-evidence/hermes-out.txt').read_bytes()
+          answer=raw.decode('utf-8','replace')
+          lines=[re.sub(r'\x1b\[[0-9;]*m','',line).strip() for line in answer.splitlines()]
+          # Reversed answer must appear on a line, not just inside a printed user prompt.
+          accepted=any(line=='NUS' for line in lines)
+          report={'schema':'angels.hermes-lightweight/v1',
+                  'lite_runner_exit_zero':True,'bounded_answer_accepted':accepted,
+                  'one_turn_limit':1,'context_configured':65536,
+                  'aws_connection':False,'always_on':False,
+                  'production_credentials_used':False,
+                  'run_id':os.environ['GITHUB_RUN_ID'],
+                  'stdout_sha256':hashlib.sha256(raw).hexdigest()}
+          pathlib.Path('lite-evidence/receipt.json').write_text(json.dumps(report,indent=2))
+          assert accepted,'OFFICIAL_HERMES_LIGHTWEIGHT_ANSWER_NOT_VERIFIED'
+          print('HERMES_LIGHTWEIGHT_OFFICIAL_CLI=PASS_SYNTHETIC_ONLY')
+          PY
+      - name: Preserve independent evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: angels-hermes-lightweight-evidence
+          path: lite-evidence/
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Dispose local model
+        if: always()
+        shell: bash
+        run: docker rm -f angels-lite-ollama >/dev/null 2>&1 || true
