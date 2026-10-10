@@ -42,7 +42,7 @@ jobs:
           set -Eeuo pipefail
           export PATH="$HOME/.local/bin:$HERMES_HOME/bin:$PATH"
           hermes --help >/dev/null
-          curl -fsSL --retry 2 --connect-timeout 10 https://raw.githubusercontent.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/e2f4b8fe20e81af0a4172600417c03a9bec147b4/angels-recovery/hermes-free-noauth-proxy.py -o "$RUNNER_TEMP/free-proxy.py"
+          curl -fsSL --retry 2 --connect-timeout 10 https://raw.githubusercontent.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/dc9e65cf4b708458bc44a84fa91ba349f33c95f7/angels-recovery/hermes-lease-free-proxy.py -o "$RUNNER_TEMP/free-proxy.py"
           python3 -u "$RUNNER_TEMP/free-proxy.py" > "$RUNNER_TEMP/free-proxy.log" 2>&1 &
           proxy_pid=$!
           trap 'kill "$proxy_pid" 2>/dev/null || true' EXIT
@@ -69,7 +69,7 @@ jobs:
           CANCELLED -> CANCELLED only when stop_confirmed exactly True; otherwise STOPPING.
           Unknown states -> BLOCKED.
           can_claim True only when expected_generation exact int nonnegative equals generation AND classify_job is READY or RECOVER; otherwise False.
-          No imports besides stdlib. Do not read or modify other files. Actually write the module using tools and run python3 -m py_compile lease/lease_policy.py.
+          Keep each tool call small: write acknowledgment first, then classify_job, then can_claim in separate tool calls if needed. No imports besides stdlib. Do not read or modify other files. Actually write the module using tools and run python3 -m py_compile lease/lease_policy.py.
           Your final response must identify the task and output path. No claim of production deployment or organizational enrollment.
           PROMPT
           cd "$RUNNER_TEMP/lease-workspace"
@@ -149,5 +149,7 @@ jobs:
             /tmp/lease-hermes-output/
             ${{ runner.temp }}/lease-workspace/acknowledgment.json
             ${{ runner.temp }}/hermes-log.txt
+            ${{ runner.temp }}/lease-workspace/lease/lease_policy.py
+            ${{ runner.temp }}/free-proxy.log
           if-no-files-found: warn
           retention-days: 7
