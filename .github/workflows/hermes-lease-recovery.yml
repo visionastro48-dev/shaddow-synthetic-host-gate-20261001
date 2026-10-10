@@ -1,0 +1,153 @@
+# First actual LEASE engineering mission for the verified isolated free Hermes carrier.
+# No private ANGELS source, secrets, production authority or paid-model fallback.
+name: LEASE Hermes First Engineering Work
+on:
+  push:
+    branches: [lab/hermes-lease-recovery-20261010]
+    paths: [.github/workflows/hermes-lease-recovery.yml]
+permissions: {}
+jobs:
+  lease-real-hermes:
+    if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 27
+    steps:
+      - name: Verify disposable carrier
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = "visionastro48-dev/shaddow-synthetic-host-gate-20261001"
+          test ! -e .git
+          test ! -e "$HOME/.hermes"
+          test ! -e /srv/angels-foundation-v1
+          echo 'LEASE_ISOLATED_NO_PRODUCTION_AUTHORITY=true'
+
+      - name: Install real Hermes Agent
+        timeout-minutes: 18
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export HERMES_HOME="$RUNNER_TEMP/hermes-profile"
+          mkdir -p "$HERMES_HOME"
+          curl -fsSL --retry 2 --connect-timeout 15 https://hermes-agent.nousresearch.com/install.sh -o "$RUNNER_TEMP/hermes-install.sh"
+          bash "$RUNNER_TEMP/hermes-install.sh" --non-interactive --skip-browser --skip-computer-use --hermes-home "$HERMES_HOME" --dir "$HERMES_HOME/hermes-agent"
+          echo "HERMES_HOME=$HERMES_HOME" >> "$GITHUB_ENV"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HERMES_HOME/bin" >> "$GITHUB_PATH"
+          echo 'LEASE_UPSTREAM_HERMES_INSTALLED=true'
+
+      - name: Ask Hermes to implement LEASE lease policy
+        shell: bash
+        timeout-minutes: 6
+        run: |
+          set -Eeuo pipefail
+          export PATH="$HOME/.local/bin:$HERMES_HOME/bin:$PATH"
+          hermes --help >/dev/null
+          curl -fsSL --retry 2 --connect-timeout 10 https://raw.githubusercontent.com/visionastro48-dev/shaddow-synthetic-host-gate-20261001/e2f4b8fe20e81af0a4172600417c03a9bec147b4/angels-recovery/hermes-free-noauth-proxy.py -o "$RUNNER_TEMP/free-proxy.py"
+          python3 -u "$RUNNER_TEMP/free-proxy.py" > "$RUNNER_TEMP/free-proxy.log" 2>&1 &
+          proxy_pid=$!
+          trap 'kill "$proxy_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 15); do
+            if curl -fsS --max-time 1 http://127.0.0.1:8765/health >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+          mkdir -p "$HERMES_HOME" "$RUNNER_TEMP/lease-workspace/lease"
+          chmod 700 "$HERMES_HOME"
+          printf '%s\n' 'model:' '  default: "cohere/north-mini-code:free"' '  provider: custom' '  base_url: "http://127.0.0.1:8765/v1"' '  api_key: ""' 'fallback_providers: []' 'terminal:' '  backend: local' > "$HERMES_HOME/config.yaml"
+          chmod 600 "$HERMES_HOME/config.yaml"
+          cat > "$RUNNER_TEMP/lease-task.txt" <<'PROMPT'
+          GENERIC NON-PRODUCTION LEASE POLICY ENGINEERING. Mission: lease_recovery_20261010_001.
+          Use the terminal tool to create lease/lease_policy.py, not merely describe code.
+          No accounts, secrets, deployments, external messages or external actions. Work only in this disposable workspace.
+          Before implementing, use a tool to write acknowledgment.json containing mission_id "lease_recovery_20261010_001", accepted true, and an ISO UTC accepted_at. This is acceptance of this bounded coding task only.
+          Implement classify_job(job, now_epoch) -> str and can_claim(job, now_epoch, expected_generation) -> bool.
+          Input must be a dict with authorized exactly True; job_id nonblank string; generation exact int (not bool), nonnegative; now_epoch exact int nonnegative. Invalid -> BLOCKED.
+          PENDING -> READY. FAILED -> REPAIR.
+          COMPLETED -> DONE only when verification is a dict with passed exactly True, verifier_id a nonblank str, executor_id a nonblank str different from verifier_id, evidence_sha256 a string of exactly 64 lowercase hexadecimal characters. Otherwise VERIFYING.
+          RUNNING requires lease_expires_at exact int nonnegative. Future expiry -> ACTIVE. Expired or equal deadline: operation_class pure or read_only -> RECOVER; all other/missing classes -> RECONCILING (never blindly retry external effects).
+          CANCELLED -> CANCELLED only when stop_confirmed exactly True; otherwise STOPPING.
+          Unknown states -> BLOCKED.
+          can_claim True only when expected_generation exact int nonnegative equals generation AND classify_job is READY or RECOVER; otherwise False.
+          No imports besides stdlib. Do not read or modify other files. Actually write the module using tools and run python3 -m py_compile lease/lease_policy.py.
+          Your final response must identify the task and output path. No claim of production deployment or organizational enrollment.
+          PROMPT
+          cd "$RUNNER_TEMP/lease-workspace"
+          echo "LEASE_HERMES_WORK_STARTED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          set +e
+          timeout 220 hermes chat --oneshot --quiet --toolsets "terminal,file" --max-turns 14 --provider custom --model "cohere/north-mini-code:free" --query-file "$RUNNER_TEMP/lease-task.txt" > "$RUNNER_TEMP/hermes-log.txt" 2>&1
+          rc=$?
+          set -e
+          echo "LEASE_HERMES_EXIT_CODE=$rc"
+          sed -n '1,90p' "$RUNNER_TEMP/hermes-log.txt"
+          grep '"event": "FREE_INFERENCE_RECEIPT"' "$RUNNER_TEMP/free-proxy.log" || true
+          test "$rc" -eq 0
+          grep -q '"event": "FREE_INFERENCE_RECEIPT"' "$RUNNER_TEMP/free-proxy.log"
+          test -f lease/lease_policy.py && test ! -L lease/lease_policy.py
+          test "$(wc -c < lease/lease_policy.py)" -le 20000
+          python3 -m py_compile lease/lease_policy.py
+          sha256sum lease/lease_policy.py
+          echo 'LEASE_HERMES_REAL_CODE_GENERATED=true'
+
+      - name: Independently test Hermes-created code
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat > "$RUNNER_TEMP/lease-independent-test.py" <<'PY'
+          import importlib.util, pathlib, os, json, hashlib, datetime
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'lease-workspace'
+          ack=json.loads((root/'acknowledgment.json').read_text())
+          assert ack['mission_id']=='lease_recovery_20261010_001' and ack['accepted'] is True
+          datetime.datetime.fromisoformat(ack['accepted_at'].replace('Z','+00:00'))
+          path=root/'lease/lease_policy.py'
+          s=importlib.util.spec_from_file_location('policy',path)
+          m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+          def j(state='PENDING', **kw):
+              d=dict(job_id='synthetic-001',authorized=True,state=state,generation=7)
+              d.update(kw); return d
+          v=dict(passed=True,verifier_id='qa',executor_id='worker',evidence_sha256='a'*64)
+          cases=[(j(),100,'READY'),(j('FAILED'),100,'REPAIR'),
+          (j('COMPLETED'),100,'VERIFYING'),(j('COMPLETED',verification=v),100,'DONE'),
+          (j('COMPLETED',verification={**v,'verifier_id':'worker'}),100,'VERIFYING'),
+          (j('COMPLETED',verification={**v,'evidence_sha256':'bad'}),100,'VERIFYING'),
+          (j('RUNNING',lease_expires_at=101),100,'ACTIVE'),
+          (j('RUNNING',lease_expires_at=100,operation_class='pure'),100,'RECOVER'),
+          (j('RUNNING',lease_expires_at=99,operation_class='read_only'),100,'RECOVER'),
+          (j('RUNNING',lease_expires_at=99,operation_class='irreversible'),100,'RECONCILING'),
+          (j('RUNNING',lease_expires_at=99),100,'RECONCILING'),
+          (j('RUNNING',lease_expires_at=True),100,'BLOCKED'),
+          (j('CANCELLED'),100,'STOPPING'),(j('CANCELLED',stop_confirmed=True),100,'CANCELLED'),
+          (j(authorized=1),100,'BLOCKED'),(j(job_id=' '),100,'BLOCKED'),
+          (j(generation=True),100,'BLOCKED'),(j(generation=-1),100,'BLOCKED'),
+          (j(),True,'BLOCKED'),(j(),-1,'BLOCKED'),(None,100,'BLOCKED'),({},100,'BLOCKED'),
+          (j('UNKNOWN'),100,'BLOCKED')]
+          for d,now,want in cases: assert m.classify_job(d,now)==want,(d,now,want)
+          claims=[(j(),100,7,True),(j(),100,8,False),(j(),100,True,False),
+          (j('RUNNING',lease_expires_at=99,operation_class='pure'),100,7,True),
+          (j('RUNNING',lease_expires_at=99,operation_class='irreversible'),100,7,False),
+          (j('COMPLETED',verification=v),100,7,False),(j('CANCELLED'),100,7,False),
+          (j('RUNNING',lease_expires_at=101,operation_class='pure'),100,7,False)]
+          for d,now,gen,want in claims: assert m.can_claim(d,now,gen) is want,(d,now,gen,want)
+          receipt=dict(mission_id=ack['mission_id'],status='BOUNDED_POLICY_TESTS_PASSED',tests=len(cases)+len(claims),source_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),run_id=os.environ['GITHUB_RUN_ID'],commit=os.environ['GITHUB_SHA'],verified_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),production_authority=False,team_enrolled=False)
+          (root/'verification.json').write_text(json.dumps(receipt,indent=2))
+          print(json.dumps(receipt))
+          PY
+          python3 "$RUNNER_TEMP/lease-independent-test.py"
+          mkdir -p /tmp/lease-hermes-output
+          cp "$RUNNER_TEMP/lease-workspace/lease/lease_policy.py" /tmp/lease-hermes-output/lease_policy.py
+          cp "$RUNNER_TEMP/lease-workspace/acknowledgment.json" "$RUNNER_TEMP/lease-workspace/verification.json" /tmp/lease-hermes-output/
+          sha256sum /tmp/lease-hermes-output/lease_policy.py
+          echo 'NO_PRODUCTION_AUTHORITY=true'
+          echo 'PERSISTENT_24X7=false'
+
+      - name: Preserve generated LEASE source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lease-hermes-first-engineering-output
+          path: |
+            /tmp/lease-hermes-output/
+            ${{ runner.temp }}/lease-workspace/acknowledgment.json
+            ${{ runner.temp }}/hermes-log.txt
+          if-no-files-found: warn
+          retention-days: 7
