@@ -51,7 +51,7 @@ jobs:
             sleep 2
           done
           curl -fsS --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null
-          ollama pull qwen2.5-coder:1.5b
+          ollama pull qwen2.5:7b
           echo "LOCAL_ONLY_MODEL_READY"
       - name: Real OpenHands agent tool action and independent artifact verification
         shell: bash
@@ -71,9 +71,9 @@ jobs:
           path = pathlib.Path("/tmp/angels-openhands-disposable/task")
           path.mkdir(parents=True, exist_ok=True)
           model = LLM(
-              model="ollama_chat/qwen2.5-coder:1.5b", base_url="http://127.0.0.1:11434",
+              model="ollama_chat/qwen2.5:7b", base_url="http://127.0.0.1:11434",
               api_key="local", temperature=0, max_input_tokens=8192,
-              max_output_tokens=350, timeout=180, num_retries=0,
+              max_output_tokens=350, timeout=280, num_retries=0,
               litellm_extra_body={"think": False},
           )
           agent = Agent(
@@ -83,10 +83,11 @@ jobs:
               system_prompt="You are an isolated disposable coding agent. Modify files ONLY in the task workspace. Do not use the network. Do not access tokens, other projects or credentials. Use a terminal tool, observe results, then finish.",
           )
           conv = Conversation(agent=agent, workspace=str(path),
-              max_iteration_per_run=5, visualizer=None,
+              max_iteration_per_run=4, visualizer=None,
+              callbacks=[lambda e: print('SDK_EVENT', type(e).__name__, str(e)[:200], flush=True)],
               persistence_dir="/tmp/angels-openhands-disposable/receipts")
           try:
-              conv.send_message("Using your terminal tool, create hello_angels.sh in your assigned workspace containing exactly two lines: #!/usr/bin/env bash and echo OPENHANDS_ANGELS_TASK_OK. Then use the terminal tool to execute bash hello_angels.sh and finish.")
+              conv.send_message("Create hello_angels.sh with exactly these two lines: #!/usr/bin/env bash then echo OPENHANDS_ANGELS_TASK_OK. Next execute bash hello_angels.sh in the terminal. Finally finish.")
               conv.run()
           finally:
               conv.close()
