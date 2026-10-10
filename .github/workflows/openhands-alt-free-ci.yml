@@ -1,0 +1,53 @@
+# No secrets, private source, or production authority. Standard free public runner only.
+name: ANGELS OpenHands SDK Alternative Carrier
+on:
+  push:
+    branches: [lab/openhands-alt-carrier-20261010]
+    paths:
+      - 'angels-recovery/ci_openhands_alt.py'
+      - '.github/workflows/openhands-alt-free-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: angels-openhands-alt-disposable
+  cancel-in-progress: false
+jobs:
+  synthetic-openhands-sdk:
+    if: github.repository == 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout isolated public test repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install matched OpenHands SDK and tools in isolated venv
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = 'visionastro48-dev/shaddow-synthetic-host-gate-20261001'
+          test -z "$(printenv ANGELS_MODULE_TOKEN || true)"
+          test -z "$(printenv OPENROUTER_API_KEY || true)"
+          test -z "$(printenv OPENAI_API_KEY || true)"
+          python3 -m venv /tmp/angels-oh-sdk
+          /tmp/angels-oh-sdk/bin/python -m pip install --disable-pip-version-check 'openhands-sdk==1.27.0' 'openhands-tools==1.27.0'
+          /tmp/angels-oh-sdk/bin/python -m py_compile angels-recovery/ci_openhands_alt.py
+      - name: Run disposable local Ollama, zero paid-model API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker run -d --rm --name angels-oh-ci-ollama -p 127.0.0.1:11434:11434 -e OLLAMA_NUM_PARALLEL=1 -e OLLAMA_CONTEXT_LENGTH=8192 ollama/ollama:0.11.10 >/dev/null
+          for i in $(seq 1 40); do
+            if curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 2
+          done
+          timeout 500 docker exec angels-oh-ci-ollama ollama pull qwen3:4b-instruct >/dev/null
+      - name: Actual OpenHands SDK terminal tasks and independent checks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout 1000 /tmp/angels-oh-sdk/bin/python angels-recovery/ci_openhands_alt.py
+      - name: Dispose model and runner state
+        if: always()
+        shell: bash
+        run: docker rm -f angels-oh-ci-ollama >/dev/null 2>&1 || true
