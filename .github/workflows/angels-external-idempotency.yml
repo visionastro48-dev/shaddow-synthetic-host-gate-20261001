@@ -1,0 +1,151 @@
+name: ANGELS external engineering - durable idempotency (no internal workers)
+on:
+  pull_request:
+    paths:
+      - .github/workflows/angels-external-idempotency.yml
+
+permissions:
+  contents: read
+
+jobs:
+  external-ai-developer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    steps:
+      - name: Install existing free OpenHands SDK carrier
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --disable-pip-version-check --no-cache-dir 'openhands-sdk==1.27.0' 'openhands-tools==1.27.0'
+          python3 -c 'import openhands.sdk; from openhands.tools.terminal import TerminalTool; print("SDK_READY=PASS")'
+      - name: Start local, uncredentialed inference
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL https://ollama.com/install.sh -o /tmp/ollama-install.sh
+          sh /tmp/ollama-install.sh
+          ollama serve >/tmp/ollama-log.txt 2>&1 &
+          for i in $(seq 1 35); do
+            if curl -fsS --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen2.5:7b
+          echo LOCAL_LLM=PASS
+      - name: External OpenHands AI implements actual durable idempotency task
+        shell: bash
+        env:
+          OPENHANDS_SUPPRESS_BANNER: "1"
+          ALLOW_SHORT_CONTEXT_WINDOWS: "true"
+        run: |
+          set -Eeuo pipefail
+          unset ANGELS_MODULE_TOKEN ANGELS_GATEWAY_URL OPENAI_API_KEY ANTHROPIC_API_KEY OPENROUTER_API_KEY GH_TOKEN GITHUB_TOKEN
+          mkdir -p /tmp/external_lease
+          cat >/tmp/external_lease/agent.py <<'PY'
+          import pathlib, traceback
+          from openhands.sdk import Agent, LLM, Conversation
+          from openhands.sdk.tool.registry import register_tool
+          from openhands.tools.terminal import TerminalTool
+          register_tool("TerminalTool", TerminalTool)
+          root=pathlib.Path("/tmp/external_lease/task")
+          root.mkdir(parents=True,exist_ok=True)
+          llm=LLM(model="ollama_chat/qwen2.5:7b",base_url="http://127.0.0.1:11434",api_key="local",
+                  temperature=0,max_input_tokens=8192,max_output_tokens=1000,timeout=380,
+                  num_retries=0,litellm_extra_body={"think":False})
+          agent=Agent(llm=llm,tools=[{"name":"TerminalTool","params":{"terminal_type":"subprocess"}}],
+                      include_default_tools=["FinishTool"],
+                      system_prompt="You are a software developer. Use terminal tool actions to create real code files only inside the given workspace. No network, no credentials, no production services. You must observe tool output and repair errors before finishing.")
+          conv=Conversation(agent=agent,workspace=str(root),max_iteration_per_run=7,visualizer=None,
+                            callbacks=[lambda e:print("AI_EVENT",type(e).__name__,str(e)[:180],flush=True)],
+                            persistence_dir="/tmp/external_lease/receipts")
+          prompt=("Implement a small real Python module named task_ledger.py IN THE WORKSPACE. "
+                  "Implement class TaskLedger(path). Use Python standard-library sqlite3 to durably "
+                  "track claimed task IDs and a global fencing epoch (initially 1). "
+                  "Provide methods: claim_once(task_id, epoch) -> bool; advance_epoch() -> new int; "
+                  "snapshot() -> dict with exactly epoch (int), count (int), ids (sorted list of strings). "
+                  "claim_once returns True only once for each task ID across separate instances and restarts. "
+                  "Further claims of same ID always False even with a newer epoch. Claims are accepted "
+                  "only at current epoch; stale/future claims False. advance_epoch is durable and strictly "
+                  "increases by one. Reject task IDs not matching 1-64 characters [A-Za-z0-9_-] "
+                  "with ValueError; reject bool/nonpositive epoch with ValueError. Use SQLite transactions "
+                  "(BEGIN IMMEDIATE), uniqueness constraints and busy_timeout so concurrent independent "
+                  "connections cannot both accept one ID. Never reset corrupt databases or lose data. "
+                  "No external dependencies. Use a terminal tool to create task_ledger.py; next run "
+                  "python3 -m py_compile task_ledger.py and fix any errors. Finish only after writing file.")
+          try:
+              conv.send_message(prompt)
+              conv.run()
+          finally:
+              conv.close()
+          assert (root/"task_ledger.py").is_file(),"AI_MODULE_MISSING"
+          print("AI_GENERATED_MODULE=PRODUCED")
+          PY
+          timeout 850s python3 /tmp/external_lease/agent.py
+      - name: Independent adversarial test and evidence of AI-produced source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat >/tmp/external_lease/independent_test.py <<'PY'
+          import concurrent.futures,os,sqlite3,tempfile,threading,unittest
+          from pathlib import Path
+          from task_ledger import TaskLedger
+          class LedgerAcceptance(unittest.TestCase):
+              def setUp(self):
+                  self.tmp=tempfile.TemporaryDirectory()
+                  self.db=str(Path(self.tmp.name)/'ledger.db')
+                  self.l=TaskLedger(self.db)
+              def tearDown(self):self.tmp.cleanup()
+              def test_start_empty(self):
+                  self.assertEqual(self.l.snapshot(),{'epoch':1,'count':0,'ids':[]})
+              def test_once_and_persistent_replay(self):
+                  self.assertTrue(self.l.claim_once('task_A',1))
+                  self.assertFalse(TaskLedger(self.db).claim_once('task_A',1))
+                  self.assertEqual(TaskLedger(self.db).snapshot(),{'epoch':1,'count':1,'ids':['task_A']})
+              def test_distinct_ids(self):
+                  self.assertTrue(self.l.claim_once('task_A',1))
+                  self.assertTrue(self.l.claim_once('task_B',1))
+                  self.assertEqual(self.l.snapshot()['count'],2)
+              def test_epoch_fencing(self):
+                  self.assertFalse(self.l.claim_once('task_A',2))
+                  self.assertEqual(self.l.advance_epoch(),2)
+                  self.assertFalse(self.l.claim_once('task_B',1))
+                  self.assertTrue(self.l.claim_once('task_B',2))
+                  self.assertEqual(TaskLedger(self.db).snapshot()['epoch'],2)
+                  self.assertFalse(self.l.claim_once('task_B',2))
+              def test_old_task_rejected_across_epoch(self):
+                  self.assertTrue(self.l.claim_once('task_A',1))
+                  self.assertEqual(self.l.advance_epoch(),2)
+                  self.assertFalse(TaskLedger(self.db).claim_once('task_A',2))
+              def test_invalid_task_id(self):
+                  for x in ['', 'bad/slash', 'x'*65, '../escape',None]:
+                      with self.subTest(x=x),self.assertRaises(ValueError):self.l.claim_once(x,1)
+              def test_invalid_epoch(self):
+                  for x in [0,-1,True,'1',None]:
+                      with self.subTest(x=x),self.assertRaises(ValueError):self.l.claim_once('task_A',x)
+              def test_race_one_claim(self):
+                  def attempt(_):return TaskLedger(self.db).claim_once('same-id',1)
+                  with concurrent.futures.ThreadPoolExecutor(max_workers=8) as p:
+                      results=list(p.map(attempt,range(12)))
+                  self.assertEqual(results.count(True),1)
+                  self.assertEqual(self.l.snapshot()['count'],1)
+              def test_corrupt_db_fail_closed(self):
+                  other=str(Path(self.tmp.name)/'corrupt.db')
+                  Path(other).write_bytes(b'NOT_SQLITE_DATA\x00'*40)
+                  with self.assertRaises(sqlite3.DatabaseError):TaskLedger(other)
+          if __name__=='__main__':unittest.main(verbosity=2)
+          PY
+          python3 -m py_compile /tmp/external_lease/task/task_ledger.py
+          (cd /tmp/external_lease/task && PYTHONPATH=. python3 -m unittest discover -v -s .. -p independent_test.py)
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          p=Path('/tmp/external_lease/task/task_ledger.py')
+          s=p.read_text()
+          assert len(s)<16000 and 'BEGIN IMMEDIATE' in s and 'sqlite3' in s
+          print("EXTERNAL_DEVELOPER_ACCEPTANCE=PASS_9_TESTS")
+          print("AI_SOURCE_SHA256="+hashlib.sha256(p.read_bytes()).hexdigest())
+          print("BEGIN_ACCEPTED_AI_SOURCE")
+          print(s)
+          print("END_ACCEPTED_AI_SOURCE")
+          print("NO_PRIVATE_ANGELS_SOURCE_OR_CREDENTIALS=YES")
+          PY
